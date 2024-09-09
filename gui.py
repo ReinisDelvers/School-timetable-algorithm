@@ -1,6 +1,4 @@
 import tkinter as tk
-import webbrowser
-#import customtkinter
  
 class MainGUI:
 
@@ -60,21 +58,27 @@ class MainGUI:
         creator.geometry("720x480")  # sets window size
         creator.grab_set()  # prevents interacting with previous window
 
-        crebuttonframe = tk.Frame(creator)
+        buttonframe = tk.Frame(creator)
         
-        crebuttonframe.columnconfigure(0, weight=1)
-        crebuttonframe.columnconfigure(1, weight=1)
-        crebuttonframe.columnconfigure(2, weight=1)
+        buttonframe.columnconfigure(0, weight=1)
+        buttonframe.columnconfigure(1, weight=1)
+        buttonframe.columnconfigure(2, weight=1)
 
-        btn1 = tk.Button(crebuttonframe, text="Subjects", font=("Arial", 18), command=self.subjects)
+        btn1 = tk.Button(buttonframe, text="Add", font=("Arial", 18), command=subjectsadd)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
 
-        btn2 = tk.Button(crebuttonframe, text="Classes", font=("Arial", 18), command=self.classes)
+        btn2 = tk.Button(buttonframe, text="Edit", font=("Arial", 18))
         btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
 
-        crebuttonframe.pack(fill="x")
+        
+        btn3 = tk.Button(buttonframe, text="Remove", font=("Arial", 18))
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+
+        buttonframe.pack(fill="x")
 
         creator.mainloop()
+   
 
     def classes(self):
         creator = tk.Toplevel(self.window) #creates a new window
@@ -82,6 +86,27 @@ class MainGUI:
         creator.resizable(False, False) #prevents adjusting Widht, Height
         creator.geometry("720x480") #sets window size
         creator.grab_set() #prevents interacting with previous window
+        
+        buttonframe = tk.Frame(creator)
+        
+        buttonframe.columnconfigure(0, weight=1)
+        buttonframe.columnconfigure(1, weight=1)
+        buttonframe.columnconfigure(2, weight=1)
+
+        btn1 = tk.Button(buttonframe, text="Add", font=("Arial", 18))
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        btn2 = tk.Button(buttonframe, text="Edit", font=("Arial", 18))
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        
+        btn3 = tk.Button(buttonframe, text="Remove", font=("Arial", 18))
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+
+        buttonframe.pack(fill="x")
+
+        creator.mainloop()
 
     def classrooms(self):
         creator = tk.Toplevel(self.window) #creates a new window
@@ -89,6 +114,27 @@ class MainGUI:
         creator.resizable(False, False) #prevents adjusting Widht, Height
         creator.geometry("720x480") #sets window size
         creator.grab_set() #prevents interacting with previous window
+        
+        buttonframe = tk.Frame(creator)
+        
+        buttonframe.columnconfigure(0, weight=1)
+        buttonframe.columnconfigure(1, weight=1)
+        buttonframe.columnconfigure(2, weight=1)
+
+        btn1 = tk.Button(buttonframe, text="Add", font=("Arial", 18))
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        btn2 = tk.Button(buttonframe, text="Edit", font=("Arial", 18))
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        
+        btn3 = tk.Button(buttonframe, text="Remove", font=("Arial", 18))
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+
+        buttonframe.pack(fill="x")
+
+        creator.mainloop()
 
     def teachers(self):
         creator = tk.Toplevel(self.window) #creates a new window
@@ -96,5 +142,26 @@ class MainGUI:
         creator.resizable(False, False) #prevents adjusting Widht, Height
         creator.geometry("720x480") #sets window size
         creator.grab_set() #prevents interacting with previous window
+        
+        buttonframe = tk.Frame(creator)
+        
+        buttonframe.columnconfigure(0, weight=1)
+        buttonframe.columnconfigure(1, weight=1)
+        buttonframe.columnconfigure(2, weight=1)
+
+        btn1 = tk.Button(buttonframe, text="Add", font=("Arial", 18))
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        btn2 = tk.Button(buttonframe, text="Edit", font=("Arial", 18))
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        
+        btn3 = tk.Button(buttonframe, text="Remove", font=("Arial", 18))
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+
+        buttonframe.pack(fill="x")
+
+        creator.mainloop()
 
 MainGUI()
