@@ -1,4 +1,5 @@
 import tkinter as tk
+import webbrowser
 #import customtkinter
  
 class MainGUI:
@@ -50,13 +51,41 @@ class MainGUI:
         self.buttonframe.pack(fill="x")
 
         self.window.mainloop()
-        
+    
+
     def subjects(self):
-        creator = tk.Toplevel(self.window) #creates a new window
-        creator.title("Subjects") #window title
-        creator.resizable(False, False) #prevents adjusting Widht, Height
-        creator.geometry("720x480") #sets window size
-        creator.grab_set() #prevents interacting with previous window
+        creator = tk.Toplevel(self.window)  # creates a new window
+        creator.title("Subjects")  # window title
+        creator.resizable(False, False)  # prevents adjusting Width, Height
+        creator.geometry("720x480")  # sets window size
+        creator.grab_set()  # prevents interacting with previous window
+
+        # Add a label with the text "test"
+        label = tk.Label(creator, text="test", font=("Arial", 16))
+        label.pack(pady=20)
+
+        # Add a button that opens the YouTube link when clicked
+        def open_link():
+            webbrowser.open("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
+
+        button = tk.Button(creator, text="button", font=("Arial", 14), command=open_link)
+        button.pack(pady=10)
+
+        # Create a frame for the grid of buttons
+        button_grid = tk.Frame(creator)
+        button_grid.pack(pady=20)
+
+        # Add buttons to the grid: math, science, and english
+        math_button = tk.Button(button_grid, text="Math", font=("Arial", 14))
+        math_button.grid(row=0, column=0, padx=10, pady=10)
+
+        science_button = tk.Button(button_grid, text="Science", font=("Arial", 14))
+        science_button.grid(row=0, column=1, padx=10, pady=10)
+
+        english_button = tk.Button(button_grid, text="English", font=("Arial", 14))
+        english_button.grid(row=0, column=2, padx=10, pady=10)
+
+
 
 
     def classes(self):
