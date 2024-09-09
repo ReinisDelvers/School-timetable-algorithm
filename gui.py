@@ -78,7 +78,34 @@ class MainGUI:
         buttonframe.pack(fill="x")
 
         creator.mainloop()
-   
+
+    def subjectsadd(self):
+        creator = tk.Toplevel(self.window)  # creates a new window
+        creator.title("Subjects")  # window title
+        creator.resizable(False, False)  # prevents adjusting Width, Height
+        creator.geometry("720x480")  # sets window size
+        creator.grab_set()  # prevents interacting with previous window
+
+        buttonframe = tk.Frame(creator)
+        
+        buttonframe.columnconfigure(0, weight=1)
+        buttonframe.columnconfigure(1, weight=1)
+        buttonframe.columnconfigure(2, weight=1)
+
+        btn1 = tk.Button(buttonframe, text="Add", font=("Arial", 18))
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        btn2 = tk.Button(buttonframe, text="Edit", font=("Arial", 18))
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        
+        btn3 = tk.Button(buttonframe, text="Remove", font=("Arial", 18))
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E)
+
+
+        buttonframe.pack(fill="x")
+
+        creator.mainloop()
 
     def classes(self):
         creator = tk.Toplevel(self.window) #creates a new window
