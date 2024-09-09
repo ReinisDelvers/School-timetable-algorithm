@@ -59,6 +59,7 @@ class MainGUI:
         creator.resizable(False, False)  # prevents adjusting Width, Height
         creator.geometry("720x480")  # sets window size
         creator.grab_set()  # prevents interacting with previous window
+<<<<<<< Updated upstream
 
         # Add a label with the text "test"
         label = tk.Label(creator, text="test", font=("Arial", 16))
@@ -86,7 +87,24 @@ class MainGUI:
         english_button.grid(row=0, column=2, padx=10, pady=10)
 
 
+=======
+>>>>>>> Stashed changes
 
+        crebuttonframe = tk.Frame(creator)
+        
+        crebuttonframe.columnconfigure(0, weight=1)
+        crebuttonframe.columnconfigure(1, weight=1)
+        crebuttonframe.columnconfigure(2, weight=1)
+
+        btn1 = tk.Button(crebuttonframe, text="Subjects", font=("Arial", 18), command=self.subjects)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E)
+
+        btn2 = tk.Button(crebuttonframe, text="Classes", font=("Arial", 18), command=self.classes)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E)
+
+        crebuttonframe.pack(fill="x")
+
+        creator.mainloop()
 
     def classes(self):
         creator = tk.Toplevel(self.window) #creates a new window
