@@ -1,5 +1,5 @@
 import tkinter as tk
-import customtkinter
+#import customtkinter
  
 class MainGUI:
 
@@ -21,6 +21,7 @@ class MainGUI:
         self.window.config(menu=self.menubar)
 
         self.buttonframe = tk.Frame(self.window)
+        
         self.buttonframe.columnconfigure(0, weight=1)
         self.buttonframe.columnconfigure(1, weight=1)
         self.buttonframe.columnconfigure(2, weight=1)
@@ -56,7 +57,8 @@ class MainGUI:
         creator.resizable(False, False) #prevents adjusting Widht, Height
         creator.geometry("720x480") #sets window size
         creator.grab_set() #prevents interacting with previous window
-        
+
+
     def classes(self):
         creator = tk.Toplevel(self.window) #creates a new window
         creator.title("Classes") #window title
