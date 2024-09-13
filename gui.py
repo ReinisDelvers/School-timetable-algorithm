@@ -8,7 +8,8 @@ class MainGUI:
       
         window_width = 1280
         window_height = 720
-
+        #window.attributes('-topmost', 1)///////////////////////////////////////
+        #root.iconbitmap('./assets/pythontutorial.ico')/////////////////////////
         # get the screen dimension
         screen_width = self.window.winfo_screenwidth()
         screen_height = self.window.winfo_screenheight()
