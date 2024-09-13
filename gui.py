@@ -5,8 +5,21 @@ class MainGUI:
     def __init__(self):
 
         self.window = tk.Tk()
+      
+        window_width = 1280
+        window_height = 720
 
-        self.window.geometry("1280x720")
+        # get the screen dimension
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+
+        # find the center point
+        center_x = int(screen_width/2 - window_width / 2)
+        center_y = int(screen_height/2 - window_height / 2)
+
+        # set the position of the window to the center of the screen
+        self.window.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+
         self.window.title("School timetable algorithm")
 
         self.menubar = tk.Menu(self.window)
