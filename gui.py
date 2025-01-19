@@ -614,8 +614,11 @@ class MainGUI:
             group_number = None
             subject_teacher_list = get_subject_teacher()
             for i in subject_teacher_list:
+                print(subject_name, teacher_name)
+                print(i[1], i[2], i[3])
                 if subject_name == i[1] and teacher_name == f"{i[2]} {i[3]}":
                     showerror("Error", "This teacher/subject already exists.")
+                    return
             for i in subject_list:
                 if i[1] == subject_name:
                     subject_id = i[0]
@@ -807,15 +810,16 @@ class MainGUI:
             subject_name = optionmenuent1.get()
             student_name = optionmenuent2.get()
             subject_id = None
-            group_number = None
             subject_student_list = get_subject_student()
             for i in subject_student_list:
+                print(subject_name, student_name)
+                print(i[1], i[2], i[3])
                 if subject_name == i[1] and student_name == f"{i[2]} {i[3]}":
                     showerror("Error", "This student/subject already exists.")
+                    return
             for i in subject_list:
                 if i[1] == subject_name:
                     subject_id = i[0]
-                    group_number = i[2]
                     break
             student_id = None
             for i in student_list:

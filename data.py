@@ -227,13 +227,20 @@ def get_subject_studentid():
 def get_subject_student():
     cur = conn.cursor()
     cur.execute(
-        """
-        SELECT subject_student.id, subject.id AS subject_id, student.id AS student_id, 
-               student.name AS student_name, student.last_name AS student_last_name
-        FROM subject_student
-        LEFT JOIN subject ON subject.id = subject_student.subject_id
+                f"""
+        SELECT subject_student.id, subject.name, student.name, student.last_name, subject.group_number
+        FROM
+        (subject_student LEFT JOIN subject ON subject.id = subject_student.subject_id)
         LEFT JOIN student ON student.id = subject_student.student_id
+
         """
+        # """
+        # SELECT subject_student.id, subject.id AS subject_id, student.id AS student_id, 
+        # student.name AS student_name, student.last_name AS student_last_name
+        # FROM subject_student
+        # LEFT JOIN subject ON subject.id = subject_student.subject_id
+        # LEFT JOIN student ON student.id = subject_student.student_id
+        # """
     )
     conn.commit()
     data = cur.fetchall()
