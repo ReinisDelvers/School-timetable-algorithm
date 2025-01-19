@@ -1,462 +1,281 @@
 import sqlite3
-from collections import defaultdict
-import itertools
 from itertools import permutations, product
+from multiprocessing import cpu_count
+from collections import defaultdict
+import logging
+from data import (
+    get_teacher,
+    get_subject,
+    get_subject_teacher,
+    get_subject_student,
+)
 
+# Configuration Parameters
+CONFIG = {
+    "max_students_per_teacher": 30,
+    "max_classes_per_day": 8,
+    "max_combinations": 1000000000,
+    "time_slots": [
+        "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00",
+        "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
+    ],
+    "cores": cpu_count(),
+    "chunksize": 100,
+    "max_classes_per_week_per_subject": 9,
+    "max_classes_per_day_per_subject": 3,
+}
 
-# Connect to the database
+# Logging setup
+logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(message)s')
+
+# Database Connection
 conn = sqlite3.connect("data.db", check_same_thread=False)
 
-MAX_ATTEMPTS = 10  # Number of timetable generation attempts
-
-# Define the maximum number of students a teacher can handle
-MAX_STUDENTS_PER_TEACHER = 30  # Set this value as needed
-
+# Fetch data from the database
 def fetch_data():
-    """Fetch required data from the database."""
-    cur = conn.cursor()
+    try:
+        logging.info("Fetching teachers...")
+        teachers = get_teacher() or []
+        logging.debug(f"Teachers: {teachers}")
 
-    # Fetch teachers
-    teachers = cur.execute("SELECT id, name, last_name, monday, tuesday, wednesday, thursday FROM teacher").fetchall()
-    print(f"Fetched {len(teachers)} teachers.")
+        logging.info("Fetching subjects...")
+        subjects = get_subject() or []
+        logging.debug(f"Subjects: {subjects}")
 
-    # Fetch subjects
-    subjects = cur.execute("SELECT id, name, group_number, number_of_hours_per_week, max_hours_per_day FROM subject").fetchall()
-    print(f"Fetched {len(subjects)} subjects.")
+        logging.info("Fetching subject-teacher mappings...")
+        subject_teacher = get_subject_teacher() or []
+        logging.debug(f"Subject-Teacher: {subject_teacher}")
 
-    # Fetch subject-teacher relationships
-    subject_teachers = cur.execute("""SELECT subject_teacher.subject_id, subject_teacher.teacher_id, subject.name, teacher.name, teacher.last_name
-                                      FROM subject_teacher
-                                      JOIN subject ON subject_teacher.subject_id = subject.id
-                                      JOIN teacher ON subject_teacher.teacher_id = teacher.id""").fetchall()
-    print(f"Fetched {len(subject_teachers)} subject-teacher relationships.")
+        logging.info("Fetching subject-student mappings...")
+        subject_student = get_subject_student() or []
+        logging.debug(f"Subject-Student: {subject_student}")
 
-    # Fetch students
-    students = cur.execute("SELECT id, name, last_name FROM student").fetchall()
-    print(f"Fetched {len(students)} students.")
+        logging.info("Data fetching complete.")
+        return teachers, subjects, subject_teacher, subject_student
+    except Exception as e:
+        logging.error(f"Error fetching data: {e}")
+        raise
 
-    # Fetch subject-student relationships
-    subject_students = cur.execute("""SELECT subject_student.subject_id, subject_student.student_id, subject.name, student.name, student.last_name
-                                       FROM subject_student
-                                       JOIN subject ON subject_student.subject_id = subject.id
-                                       JOIN student ON subject_student.student_id = student.id""").fetchall()
-    print(f"Fetched {len(subject_students)} subject-student relationships.")
-
-    return teachers, subjects, subject_teachers, students, subject_students
-
-
-
-def generate_teacher_combinations(teachers, subjects, time_slots):
-    """Generate all possible combinations of teachers assigned to subjects at specific time slots."""
-    teacher_combinations = []
-
-    # Generate all permutations of teachers and subjects
-    teacher_subject_permutations = list(permutations(teachers, len(subjects)))
-    print(f"Generated {len(teacher_subject_permutations)} teacher-subject permutations.")
-
-    # For each combination of teacher-subject assignments, generate possible time slot assignments
-    for teacher_subject_assignment in teacher_subject_permutations:
-        time_slot_combinations = product(time_slots, repeat=len(subjects))
-        # Convert product to list to get the length, as product is lazy
-        time_slot_combinations_list = list(time_slot_combinations)
-        print(f"Generated {len(time_slot_combinations_list)} time slot combinations for this teacher-subject permutation.")
-
-        for time_slot_assignment in time_slot_combinations_list:
-            combination = list(zip(teacher_subject_assignment, subjects, time_slot_assignment))
-            teacher_combinations.append(combination)
-
-    print(f"Total teacher combinations: {len(teacher_combinations)}")
-    return teacher_combinations
-
-
-
-def generate_student_combinations(students, subjects):
-    """Generate all possible combinations of students assigned to subjects."""
-    student_combinations = list(product(students, repeat=len(subjects)))
-    print(f"Generated {len(student_combinations)} student combinations.")
-    return student_combinations
-
-
-def generate_time_slot_combinations(time_slots, num_subjects):
-    """Generate all possible combinations of time slots for a set number of subjects."""
-    time_slot_combinations = list(product(time_slots, repeat=num_subjects))
-    print(f"Generated {len(time_slot_combinations)} time slot combinations.")
-    return time_slot_combinations
-
-
-
-
-def assign_students_to_teachers(subject_teachers, subject_students):
-    """Assign students to teachers based on subject connections."""
+# Generate combinations with optimized filtering
+def generate_combinations(teachers, subjects, students, time_slots, subject_teacher):
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
     subject_teacher_map = defaultdict(list)
-    subject_student_map = defaultdict(list)
 
-    for st in subject_teachers:
-        subject_id = st[0]
-        subject_name = st[2]
-        teacher_id = st[1]
-        teacher_name = f"{st[3]} {st[4]}"
-        subject_teacher_map[subject_id].append({
-            "teacher_id": teacher_id,
-            "teacher_name": teacher_name,
-            "subject_name": subject_name,
-        })
+    # Initialize combination_count
+    combination_count = 0
 
-    for ss in subject_students:
-        subject_id = ss[0]
-        subject_name = ss[2]
-        student_id = ss[1]
-        student_name = f"{ss[3]} {ss[4]}"
-        subject_student_map[subject_id].append({
-            "student_id": student_id,
-            "student_name": student_name,
-            "subject_name": subject_name,
-        })
+    # Create a mapping of subjects to teachers
+    for sub_id, teacher_id, teacher_name, teacher_last_name, _ in subject_teacher:
+        subject_teacher_map[sub_id].append((teacher_id, teacher_name, teacher_last_name))
 
-    teacher_assignments = defaultdict(lambda: defaultdict(list))
-    teacher_student_map = defaultdict(list)  # {teacher_id: [student_ids]}
+    # Generate combinations of subjects, teachers, students, and time slots
+    for subject_id, teacher_list in subject_teacher_map.items():
+        teacher_combinations = permutations(teacher_list, 1)
+        student_combinations = product(students, repeat=1)
+        time_combinations = product(days, time_slots)
 
-    unassigned_students = defaultdict(list)  # {subject_id: [student_ids]}
+        for teacher_comb in teacher_combinations:
+            for student_comb in student_combinations:
+                for day, time_comb in time_combinations:
+                    if CONFIG["max_combinations"] != -1 and combination_count >= CONFIG["max_combinations"]:
+                        return
+                    yield (subject_id, teacher_comb, student_comb, day, time_comb)
+                    combination_count += 1
 
-    for subject_id, teachers in subject_teacher_map.items():
-        students = subject_student_map.get(subject_id, [])
+    # Return the total number of combinations generated
+    return combination_count
 
-        for teacher in teachers:
-            teacher_id = teacher["teacher_id"]
-            teacher_name = teacher["teacher_name"]
-            subject_name = teacher["subject_name"]
+# Validate detailed student attendance
+def validate_student_attendance_detailed(timetable, subject_student):
+    student_subject_counts = defaultdict(lambda: defaultdict(int))
+    subject_students = defaultdict(list)
+    missing_subjects = defaultdict(list)
 
-            assigned_students = []
-            for student in students:
-                if len(teacher_student_map[teacher_id]) >= MAX_STUDENTS_PER_TEACHER:
-                    unassigned_students[subject_id].append(student["student_name"])
-                    continue  # Skip assigning this student if the teacher has reached max capacity
+    for _, sub_id, stu_id, stu_name, stu_last in subject_student:
+        subject_students[sub_id].append((stu_id, stu_name, stu_last))
 
-                teacher_student_map[teacher_id].append(student["student_id"])
-                assigned_students.append(student["student_name"])
+    for day, times in timetable.items():
+        for time, classes in times.items():
+            for entry in classes:
+                subject_id = entry["subject_id"]
+                students = entry["students"]
+                for student in students:
+                    student_id = student[0]
+                    student_subject_counts[student_id][subject_id] += 1
 
-            if assigned_students:
-                teacher_assignments[teacher_id][teacher_name].append({
-                    "subject_name": subject_name,
-                    "students": assigned_students,
-                })
+    for subject_id, students in subject_students.items():
+        for student_id, student_name, student_last in students:
+            if student_subject_counts[student_id][subject_id] < CONFIG["max_classes_per_week_per_subject"]:
+                missing_subjects[(student_id, student_name, student_last)].append(subject_id)
 
-    return teacher_assignments, unassigned_students
+    return missing_subjects
 
-def check_student_attendance(subject_students, student_schedule):
-    """Check if all students can attend the subjects they have selected and report conflicts."""
-    attendance_issues = []
+# Generate a timetable ensuring students attend each subject max_classes_per_week times
+def generate_timetable(
+    combination,
+    subject_teacher,
+    subject_student,
+    teachers_without_students,
+    student_weekly_limit,
+    student_daily_limit,
+    timetable,
+    teacher_schedules,
+    student_schedules,
+    day_teacher_assignments,
+    weekly_subject_teacher_assignments
+):
+    subject_id, teacher_comb, student_comb, day, time_comb = combination
+    subject_students = defaultdict(list)
 
-    # Days of the week for better readability in the report
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-    
-    # Track the student's subject assignments by day and time
-    student_subjects_by_time = defaultdict(lambda: defaultdict(list))
+    for _, sub_id, stu_id, stu_name, stu_last in subject_student:
+        subject_students[sub_id].append((stu_id, stu_name, stu_last))
 
-    # First, organize the students' scheduled subjects by day and time
-    for ss in subject_students:
-        student_id = ss[1]
-        subject_name = ss[2]
-        
-        # Look up the student's schedule and assign subjects to specific time slots
-        for day_idx in range(4):  # Check each day (0=Monday, ..., 3=Thursday)
-            for time_slot in student_schedule.get(student_id, {}).get(day_idx, []):
-                if subject_name in time_slot:  # If this subject is assigned in this time slot
-                    student_subjects_by_time[student_id][day_idx].append((time_slot, subject_name))
+    teacher_id, teacher_name, teacher_last_name = teacher_comb[0]
+    students = subject_students.get(subject_id, [])
 
-    # Now, check for conflicts and missing assignments
-    for ss in subject_students:
-        student_id = ss[1]
-        subject_name = ss[2]
-        student_name = f"{ss[3]} {ss[4]}"
+    if not students:
+        teachers_without_students.add((teacher_id, teacher_name, teacher_last_name))
+        return
 
-        found_slot = False
-        conflicting_slots = []
+    if teacher_id in day_teacher_assignments[day][time_comb]:
+        return
 
-        # Check each day and time for conflicts
-        for day_idx in range(4):  # 0=Monday, ..., 3=Thursday
-            day_conflicts = []
-
-            for time_slot in student_schedule.get(student_id, {}).get(day_idx, []):
-                # If the student is already scheduled for this subject and time, continue
-                if subject_name in time_slot:
-                    found_slot = True
-                    break
-
-                # Check if the student is already assigned a different subject at the same time
-                for scheduled_time, scheduled_subject in student_subjects_by_time[student_id][day_idx]:
-                    if scheduled_time == time_slot:
-                        day_conflicts.append(scheduled_subject)
-            
-            # If there are conflicts (overlapping classes) or if the subject is missing for the student
-            if day_conflicts:
-                conflicting_slots.append((time_slot, day_idx, day_conflicts))
-
-        # Report missing subject (no time slot found)
-        if not found_slot:
-            for day_idx in range(4):
-                for time_slot in student_schedule.get(student_id, {}).get(day_idx, []):
-                    attendance_issues.append(
-                        f"Student {student_name} cannot attend {subject_name} on {days_of_week[day_idx]} at {time_slot} due to a scheduling issue."
-                    )
-
-        # Report conflicts
-        for time_slot, day_idx, day_conflicts in conflicting_slots:
-            conflict_details = ", ".join(day_conflicts)
-            attendance_issues.append(
-                f"Student {student_name} has a conflict on {days_of_week[day_idx]} at {time_slot}: "
-                f"Scheduled subjects: {conflict_details}."
-            )
-
-    return attendance_issues
-
-
-
-
-
-def generate_timetable():
-    teachers, subjects, subject_teachers, students, subject_students = fetch_data()
-
-    teacher_assignments, unassigned_students = assign_students_to_teachers(subject_teachers, subject_students)
-
-    timetable = defaultdict(lambda: defaultdict(list))  # {day: {group: [(subject_name, teacher_name, student_list)]}}
-    teacher_schedule = defaultdict(lambda: defaultdict(list))  # {teacher_id: {day: [(time_slot, subject_name, student_list)]}}
-    student_schedule = defaultdict(lambda: defaultdict(list))  # {student_id: {day: [time_slot]}}
-
-    max_classes_per_day = 8  # Allow students to attend up to 2 classes per day
-    time_slots = [
-        "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00",
-        "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
+    eligible_students = [
+        student for student in students
+        if student_weekly_limit[student[0]][subject_id] < CONFIG["max_classes_per_week_per_subject"] and
+        student_daily_limit[day][student[0]][subject_id] < CONFIG["max_classes_per_day_per_subject"]
     ]
 
-    teacher_availability = {
-        t[0]: {
-            "name": f"{t[1]} {t[2]}",
-            "days": [t[3], t[4], t[5], t[6]],  # availability by day (0: Monday, ..., 3: Thursday)
-        } for t in teachers
-    }
+    if not eligible_students:
+        teachers_without_students.add((teacher_id, teacher_name, teacher_last_name))
+        return
 
-    subject_info = {
-        s[0]: {
-            "name": s[1],
-            "group_number": s[2],
-            "hours_per_week": s[3],
-            "max_hours_per_day": s[4],
-        } for s in subjects
-    }
+    for student in eligible_students:
+        student_id = student[0]
+        student_weekly_limit[student_id][subject_id] += 1
+        student_daily_limit[day][student_id][subject_id] += 1
 
-    subject_teacher_map = defaultdict(list)
-    for st in subject_teachers:
-        subject_teacher_map[st[0]].append({"teacher_id": st[1], "subject_name": st[2], "teacher_name": f"{st[3]} {st[4]}"})
+    # Add to timetable
+    if len(timetable[day][time_comb]) < CONFIG["max_students_per_teacher"]:
+        timetable[day][time_comb].append({
+            "subject_id": subject_id,
+            "teacher": (teacher_id, teacher_name, teacher_last_name),
+            "students": eligible_students,
+        })
+        day_teacher_assignments[day][time_comb].add(teacher_id)
 
-    student_conflicts = []
-    teachers_with_no_students = []  # List to track teachers with no students
+    # Add to teacher and student schedules
+    for student in eligible_students:
+        student_id = student[0]
+        student_name = f"{student[1]} {student[2]}"
+        student_schedules[student_id].append((day, time_comb, subject_id, teacher_name))
 
-    for subject_id, teachers in subject_teacher_map.items():
-        subject = subject_info[subject_id]
-        group = subject["group_number"]
-        hours_remaining = subject["hours_per_week"]
+    teacher_schedules[teacher_id].append((day, time_comb, subject_id, eligible_students))
 
-        for day_idx in range(4):  # 0: Monday, ..., 3: Thursday
-            if hours_remaining <= 0:
-                break
+# Print schedules for teachers and students
 
-            day_classes = timetable[day_idx][group]
+def print_schedules(teacher_schedules, student_schedules, subject_map, teacher_map, student_map):
+    print("\n=== Teacher Schedules ===")
+    for teacher_id, schedule in teacher_schedules.items():
+        teacher_name = teacher_map.get(teacher_id, "Unknown Teacher")
+        print(f"\n{teacher_name}'s Schedule:")
+        for day, time, subject_id, students in sorted(schedule):
+            subject_name = subject_map.get(subject_id, "Unknown Subject")
+            student_names = ", ".join([f"{s[1]} {s[2]}" for s in students])
+            print(f"  {day}, {time}: {subject_name} (Students: {student_names})")
 
-            if len(day_classes) >= max_classes_per_day:
-                continue
+    print("\n=== Student Schedules ===")
+    for student_id, schedule in student_schedules.items():
+        # Directly fetch the student name from student_map
+        student_name = student_map.get(student_id, None)
+        if not student_name:
+            logging.warning(f"Student ID {student_id} is not found in student_map!")
+            student_name = f"Unknown Student ({student_id})"  # Fallback to ID if no name found
+        print(f"\n{student_name}'s Schedule:")
+        for day, time, subject_id, teacher_name in sorted(schedule):
+            subject_name = subject_map.get(subject_id, "Unknown Subject")
+            print(f"  {day}, {time}: {subject_name} (Teacher: {teacher_name})")
 
-            for teacher in teachers:
-                teacher_id = teacher["teacher_id"]
-                teacher_name = teacher["teacher_name"]
-                subject_name = teacher["subject_name"]
-
-                teacher_avail = teacher_availability[teacher_id]
-
-                if not teacher_avail["days"][day_idx]:
-                    continue
-
-                if len(day_classes) > 0 and day_classes[-1][0] == subject_name:
-                    continue
-
-                students = []
-                if teacher_id in teacher_assignments:
-                    subject_data = teacher_assignments[teacher_id][teacher_name]
-                    for data in subject_data:
-                        if data["subject_name"] == subject_name:
-                            students = data["students"]
-                            break
-
-                if not students:  # If no students are assigned to this teacher, mark the teacher
-                    teachers_with_no_students.append(teacher_name)
-                    continue
-
-                time_slot = time_slots[len(day_classes)]  # Assign the next available time slot
-
-                if any(time_slot in student_schedule[student_id][day_idx] for student_id in students):
-                    continue
-
-                day_classes.append((subject_name, teacher_name, students))
-                teacher_schedule[teacher_id][day_idx].append((time_slot, subject_name, students))
-
-                for student_id in students:
-                    student_schedule[student_id][day_idx].append(time_slot)
-
-                hours_remaining -= 1
-
-                if hours_remaining <= 0 or len(day_classes) >= max_classes_per_day:
-                    break
-
-    # Check for student attendance issues
-    attendance_issues = check_student_attendance(subject_students, student_schedule)
-
-    return timetable, teacher_schedule, student_schedule, attendance_issues, teachers_with_no_students
-
-
-def evaluate_timetable(student_schedule):
-    """Evaluate a timetable for conflicts and log them."""
-    conflicts = 0
-    conflict_details = []
-
-    for student_id, days in student_schedule.items():
-        for day, slots in days.items():
-            slot_counts = defaultdict(int)
-            for slot in slots:
-                slot_counts[slot] += 1
-            for slot, count in slot_counts.items():
-                if count > 1:  # More than one class at the same time
-                    conflicts += count - 1
-                    conflict_details.append(
-                        f"Student {student_id} has {count} classes overlapping at {slot} on day {day}."
-                    )
-
-    return conflicts, conflict_details
-
-
-def print_timetable(timetable, teacher_schedule, student_schedule, teachers_with_no_students):
-    """Print the generated timetable for students and teachers."""
-    days_of_week = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-
-    print("\n=== Timetable for Students ===")
-    for day_idx, day in enumerate(days_of_week):
-        print(f"\n{day}:")
-        for group, classes in timetable[day_idx].items():
-            print(f"  Group {group}:")
-            for subject_name, teacher_name, students in classes:
-                student_names = ', '.join(students)
-                print(f"    {subject_name} by {teacher_name} - Students: {student_names}")
-
-    print("\n=== Timetable for Teachers ===")
-    for teacher_id, days in teacher_schedule.items():
-        teacher_name = teacher_schedule[teacher_id]["name"]
-        print(f"\n{teacher_name}:")
-        for day_idx, classes in days.items():
-            if isinstance(day_idx, int):  # Ensure day_idx is an integer
-                print(f"  {days_of_week[day_idx]}:")
-                for time_slot, subject_name, students in classes:
-                    student_names = ', '.join(students)
-                    print(f"    {time_slot}: {subject_name} - Students: {student_names}")
-            else:
-                print(f"Invalid day index: {day_idx}")  # Debug line to detect incorrect types
-
-    # Print out teachers with no students assigned to them
-    if teachers_with_no_students:
-        print("\n=== Teachers with No Students Assigned ===")
-        for teacher_name in teachers_with_no_students:
-            print(f"  {teacher_name}")
-
-
-
+# Main function
 def brute_force_timetable():
-    """True brute-force for every combination of teacher and student assignments."""
-    best_timetable = None
-    best_teacher_schedule = None
-    best_student_schedule = None
-    min_conflicts = float("inf")
-    teachers_with_no_students = []
-    attempt_counter = 0  # Counter to track the number of attempts
-    
-    print("\nBrute-Force Timetable Generation Attempts:\n")
+    logging.info("Fetching data from the database...")
+    teachers, subjects, subject_teacher, subject_student = fetch_data()
+    time_slots = CONFIG["time_slots"][:CONFIG["max_classes_per_day"]]
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
 
-    # Fetch all required data
-    teachers, subjects, subject_teachers, students, subject_students = fetch_data()
+    students = list({(stu_id, stu_name, stu_last) for _, _, stu_id, stu_name, stu_last in subject_student})
+    subject_map = {subject[0]: subject[1] for subject in subjects}
+    teacher_map = {teacher[0]: f"{teacher[1]} {teacher[2]}" for teacher in teachers}
+    student_map = {student[0]: f"{student[1]} {student[2]}" for _, _, student in students}
 
-    # Limit data for debugging
-    teachers = teachers[:3]
-    subjects = subjects[:3]
-    students = students[:5]
-    
-    # Define the time slots
-    time_slots = [
-        "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00",
-        "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
-    ]
-    time_slots = time_slots[:3]  # Limit to 3 time slots for debugging
+    logging.debug(f"Student Map: {student_map}")  # Log the full student map
 
-    # Generate all combinations of teachers, students, and time slots
-    all_teacher_combinations = generate_teacher_combinations(teachers, subjects, time_slots)
-    all_student_combinations = generate_student_combinations(students, subjects)
-    all_time_slot_combinations = generate_time_slot_combinations(time_slots, len(subjects))
+    logging.info("Starting brute-force timetable generation...")
+    timetable = defaultdict(lambda: defaultdict(list))
+    teachers_without_students = set()
+    student_weekly_limit = defaultdict(lambda: defaultdict(int))
+    student_daily_limit = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
+    teacher_schedules = defaultdict(list)
+    student_schedules = defaultdict(list)
+    day_teacher_assignments = defaultdict(lambda: defaultdict(set))
+    weekly_subject_teacher_assignments = defaultdict(lambda: defaultdict(int))
 
-    # Debug: Check if combinations are generated
-    print(f"Generated {len(all_teacher_combinations)} teacher combinations.")
-    print(f"Generated {len(all_student_combinations)} student combinations.")
-    print(f"Generated {len(all_time_slot_combinations)} time slot combinations.")
+    # Track the number of combinations
+    total_combinations = 0
+    for combination in generate_combinations(teachers, subjects, students, time_slots, subject_teacher):
+        generate_timetable(
+            combination,
+            subject_teacher,
+            subject_student,
+            teachers_without_students,
+            student_weekly_limit,
+            student_daily_limit,
+            timetable,
+            teacher_schedules,
+            student_schedules,
+            day_teacher_assignments,
+            weekly_subject_teacher_assignments
+        )
+        total_combinations += 1
 
-    if len(all_teacher_combinations) == 0 or len(all_student_combinations) == 0 or len(all_time_slot_combinations) == 0:
-        print("No combinations generated. Exiting brute force process.")
-        return None, None, None, None
+    logging.info("Timetable generation complete.")
+    missing_subjects = validate_student_attendance_detailed(timetable, subject_student)
 
-    # Iterate over all combinations with a limit on the number of attempts
-    for teacher_comb in all_teacher_combinations:
-        for student_comb in all_student_combinations:
-            for time_comb in all_time_slot_combinations:
-                if attempt_counter >= MAX_ATTEMPTS:
-                    print(f"\nMax attempts ({MAX_ATTEMPTS}) reached. Stopping brute force.")
-                    break
-                
-                attempt_counter += 1
-                print(f"Attempt {attempt_counter}/{MAX_ATTEMPTS}")
-                
-                # Generate the timetable for the current combination
-                timetable, teacher_schedule, student_schedule, attendance_issues, teachers_no_students = generate_timetable()
+    # Print the total number of attempts (combinations)
+    print(f"Total combinations generated: {total_combinations}")
 
-                # Evaluate the timetable for conflicts
-                conflicts, conflict_details = evaluate_timetable(student_schedule)
-                print(f"  Conflicts: {conflicts}")
-                
-                # Check if this timetable has fewer conflicts than the best one
-                if conflicts < min_conflicts:
-                    best_timetable = timetable
-                    best_teacher_schedule = teacher_schedule
-                    best_student_schedule = student_schedule
-                    min_conflicts = conflicts
-                
-                # Log any attendance issues
-                if attendance_issues:
-                    for issue in attendance_issues:
-                        print(f"  Attendance Issue: {issue}")
-                
-                teachers_with_no_students.extend(teachers_no_students)
+    return timetable, teacher_schedules, student_schedules, subject_map, teacher_map, student_map
 
-            if attempt_counter >= MAX_ATTEMPTS:
-                break  # Exit the loop if the max attempts are reached
+# Print the best timetable
+def print_timetable(timetable, teachers_without_students, subject_map):
+    print("\n=== Best Timetable ===")
+    for day, times in sorted(timetable.items()):
+        print(f"\n{day}:")
+        for time, classes in sorted(times.items()):
+            print(f"  {time}:")
+            for entry in classes:
+                teacher = entry["teacher"]
+                students = entry["students"]
+                subject_id = entry["subject_id"]
+                subject_name = subject_map.get(subject_id, "Unknown Subject")
+                teacher_name = f"{teacher[1]} {teacher[2]}"
+                student_names = ", ".join([f"{s[1]} {s[2]}" for s in students])
+                print(f"    Subject: {subject_name}")
+                print(f"    Teacher: {teacher_name}")
+                print(f"      Students: {student_names}")
 
-        if attempt_counter >= MAX_ATTEMPTS:
-            break  # Exit the loop if the max attempts are reached
+    print("\n=== Teachers Without Students ===")
+    if teachers_without_students:
+        for teacher_id, teacher_name, teacher_last_name in teachers_without_students:
+            print(f"  Teacher: {teacher_name} {teacher_last_name}")
+    else:
+        print("  All teachers were assigned students!")
+    print("======================\n")
 
-    print("\nBest Timetable Selected:")
-    print(f"Conflicts = {min_conflicts}")
-    print_timetable(best_timetable, best_teacher_schedule, best_student_schedule, teachers_with_no_students)
-    return best_timetable, best_teacher_schedule, best_student_schedule, teachers_with_no_students
+# Run the timetable generator
+if __name__ == "__main__":
+    timetable, teacher_schedules, student_schedules, subject_map, teacher_map, student_map = brute_force_timetable()
 
-
-
-
-
-
-
-
-# Generate and display the optimized timetable
-best_timetable, best_teacher_schedule, best_student_schedule = brute_force_timetable()
+    print_timetable(timetable, {}, subject_map)
+    print_schedules(teacher_schedules, student_schedules, subject_map, teacher_map, student_map)
 
