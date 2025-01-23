@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, END
 from tkinter.messagebox import showerror
 
-from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, get_subject_studentid, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student
+from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student
 
 options = {"padx": 5, "pady": 5}
 
@@ -727,147 +727,115 @@ class MainGUI:
         frame.columnconfigure(2, weight=1)
         frame.columnconfigure(3, weight=1)
 
-        def change_list():
-            global optionent1 
-            global optionent2
-            vent1= []
-            vent2 = []
+        selected_subject_student_id = None
+        selected_subject_ids = None
+        selected_student_id = None
 
+        def change_list():
             subject_student_list = get_subject_student()
             subject_list = get_subject()
             student_list = get_student()
 
             subject_student_listbox.delete(0, END)
+            subject_listbox.delete(0, END)
+            student_listbox.delete(0, END)
 
             for item in subject_student_list:
                 subject_student_listbox.insert("end", f"{item}")
-
             for item in subject_list:
-                vent1.append(f"{item[1]}")
+                subject_listbox.insert("end", f"{item}")
             for item in student_list:
-                vent2.append(f"{item[1]} {item[2]}")
-            
-            optionent1 = vent1
-            optionent2 = vent2
-
-            if optionent1:
-                optionmenuent1.set(optionent1[0])
-            else:
-                optionmenuent1.set("") 
-
-            menu1 = ent1["menu"]
-            menu1.delete(0, "end")
-            for i in optionent1:
-                menu1.add_command(label=i, command=lambda v=i: optionmenuent1.set(v))
-
-            if optionent2:
-                optionmenuent2.set(optionent2[0])
-            else:
-                optionmenuent2.set("")
-
-            menu2 = ent2["menu"]
-            menu2.delete(0, "end")
-            for i in optionent2:
-                menu2.add_command(label=i, command=lambda v=i: optionmenuent2.set(v))
+                student_listbox.insert("end", f"{item}")
 
         def subject_student_add():
-            subject_list = get_subject()
-            student_list = get_student()
-            subject_name = optionmenuent1.get()
-            student_name = optionmenuent2.get()
-            subject_id = None
+            nonlocal selected_subject_ids, selected_student_id
             subject_student_list = get_subject_student()
-            for i in subject_student_list:
-                print(subject_name, student_name)
-                print(i[1], i[2], i[3])
-                if subject_name == i[1] and student_name == f"{i[2]} {i[3]}":
-                    showerror("Error", "This student/subject already exists.")
+            for i in range(len(subject_student_list)):
+                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
+                    showerror("Error", "This student already has connections delete previous or edit it.")
                     return
-            for i in subject_list:
-                if i[1] == subject_name:
-                    subject_id = i[0]
-                    break
-            student_id = None
-            for i in student_list:
-                if f"{i[1]} {i[2]}" == student_name:
-                    student_id = i[0]
-                    break
-
-            add_subject_student(subject_id, student_id)
-            change_list()
+            if selected_subject_ids and selected_student_id:
+                add_subject_student(selected_subject_ids, selected_student_id)
+                change_list()
+            else:
+                showerror("Error", "You need to select subject and student.")
+                return
             
-
-
         def subject_student_remove():
             selected = list(subject_student_listbox.curselection())
             if not selected:
-                showerror("Error", "Select something to remove.")
+                showerror("Error", "Select something to remove from student/subject connections.")
                 return
-            
-            subject_student_list = get_subject_studentid() 
+            subject_student_list = get_subject_student()
             selected_id = [] 
             for i in selected:
                 selected_id.append(subject_student_list[i][0])
-            remove_subject_student(selected_id)
-            
+            remove_subject_student(selected_id)            
             change_list()
 
-        selected_subject_student_id = None
-
+        
         def subject_student_edit():
-            global selected_subject_student_id
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id
+            subject_list = get_subject()
+            student_list = get_student()
             selected = list(subject_student_listbox.curselection())
-            
             if not selected:
-                showerror("Error", "Select something to edit.")
+                showerror("Error", "Select subject/student connection to edit.")
                 return
             elif len(selected) > 1:
                 showerror("Error", "Select only one to edit.")
                 return
-            
-            selected1=selected[0]
             subject_student_list = get_subject_student() 
             selected_subject_student_id = subject_student_list[selected[0]][0]
-            optionmenuent1.set(subject_student_list[selected1][1])
-            optionmenuent2.set(f"{subject_student_list[selected1][2]} {subject_student_list[selected1][3]}")
+            selected_subject_ids = subject_student_list[selected[0]][1]
+            selected_student_id = subject_student_list[selected[0]][3]
+            for i in range(len(subject_list)):
+                if subject_list[i][0] == subject_student_list[selected[0]][1]:
+                    label3.config(text=f"{subject_list[i]}")
+            for i in range(len(student_list)):
+                if student_list[i][0] == subject_student_list[selected[0]][3]:
+                    label4.config(text=f"{student_list[i]}")
         
 
 
         def subject_student_confirm_edit():
-            global selected_subject_student_id
-            subject_name = optionmenuent1.get()
-            student_name = optionmenuent2.get()
-            subject_list = get_subject()
-            student_list = get_student()
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id
             subject_student_list = get_subject_student()
-            selected_student_name = ""
-            selected_subject_name = ""
-            for i in subject_student_list:
-                if selected_subject_student_id == i[0]:
-                    selected_subject_name = i[1]
-                    selected_student_name = f"{i[2]} {i[3]}"
-            for i in subject_student_list:
-                if subject_name == i[1] and student_name == f"{i[2]} {i[3]}" and not(subject_name == selected_subject_name and student_name == selected_student_name):
-                    showerror("Error", "This student/subject already exists.")
-            subject_id = None
-            for i in subject_list:
-                if i[1] == subject_name:
-                    subject_id = i[0]
-                    break
-            student_id = None
-            for i in student_list:
-                if f"{i[1]} {i[2]}" == student_name:
-                    student_id = i[0]
-                    break
-            
+            for i in range(len(subject_student_list)):
+                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
+                    showerror("Error", "This student already has connections delete previous or edit it.")
+                    return
             if selected_subject_student_id != None:
-                update_subject_student(selected_subject_student_id, subject_id, student_id)
+                update_subject_student(selected_subject_student_id, selected_subject_ids, selected_student_id)
                 selected_subject_student_id = None
             else:
                 showerror("Error", "Select something to edit.")
                 return
-            
             change_list()
+
+
+        def subject_on_selection(useless):
+            nonlocal selected_subject_ids
+            selected = list(subject_listbox.curselection())
+            subject_list = get_subject()
+            selected_ids = []
+            selected_label = []
+            if selected:
+                for i in range(len(selected)):
+                    selected_ids.append(subject_list[selected[i]][0])
+                    selected_label.append(subject_list[selected[i]])                
+                label3.config(text=f"{selected_label}")
+                selected_subject_ids = selected_ids
+                        
+        def student_on_selection(useless):
+            nonlocal selected_student_id
+            student_list = get_student()
+            selected = list(student_listbox.curselection())
+            try:
+                selected_student_id = student_list[selected[0]][0]
+                label4.config(text=f"{student_list[selected[0]]}")
+            except:
+                return
 
         btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
@@ -887,17 +855,19 @@ class MainGUI:
         label2 = tk.Label(frame, text="Student", font=("Arial", 18))
         label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
 
-        optionent1 = []
-        optionmenuent1 = tk.StringVar() 
-        ent1 = tk.OptionMenu(frame, optionmenuent1, optionent1)
-        ent1.config(font=("Arial", 18))
-        ent1.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+        label3 = tk.Label(frame, text="No subject selected", font=("Arial", 18))
+        label3.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
 
-        optionent2 = []
-        optionmenuent2 = tk.StringVar() 
-        ent2 = tk.OptionMenu(frame, optionmenuent2, optionent2)
-        ent2.config(font=("Arial", 18))
-        ent2.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+        label4 = tk.Label(frame, text="No student selected", font=("Arial", 18))
+        label4.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
+        subject_listbox.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
+        subject_listbox.bind("<<ListboxSelect>>", subject_on_selection)
+
+        student_listbox = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 18))
+        student_listbox.grid(row=3, column=1, sticky=tk.W+tk.E, **options)
+        student_listbox.bind("<<ListboxSelect>>", student_on_selection)
         
         frame.pack(fill="x")
 

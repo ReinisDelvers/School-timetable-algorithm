@@ -199,24 +199,12 @@ def get_subject_teacher():
     data = cur.fetchall()
     return data
 
-def get_subject_studentid():
-    cur = conn.cursor()
-    cur.execute(
-        f"""
-        SELECT id, subject_id, student_id FROM subject_student
-        ORDER BY id ASC
-        """
-    )
-    conn.commit()
-    data = cur.fetchall()
-    return data
-
 def get_subject_student():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT subject_student.id, subject.id AS subject_id, student.id AS student_id, 
-        student.name AS student_name, student.last_name AS student_last_name
+        SELECT subject_student.id, subject.id AS subject_id, subject.name AS subject_name, student.id AS student_id, 
+        student.name AS student_name, student.middle_name AS Student_middle_name, student.last_name AS student_last_name
         FROM subject_student
         LEFT JOIN subject ON subject.id = subject_student.subject_id
         LEFT JOIN student ON student.id = subject_student.student_id
@@ -225,7 +213,6 @@ def get_subject_student():
     conn.commit()
     data = cur.fetchall()
     return data
-
 
 
 #REMOVE
