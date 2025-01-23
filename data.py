@@ -12,7 +12,8 @@ def teacher_table_creator():
         CREATE TABLE teacher(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TINYTEXT NOT NULL,
-        last_name TINYTEXT NOT NULL,
+        middle_name TINYTEXT NOT NULL,
+        last_name TINYTEXT,
         monday BOOLEAN NOT NULL DEFAULT 1,
         tuesday BOOLEAN NOT NULL DEFAULT 1,
         wednesday BOOLEAN NOT NULL DEFAULT 1,
@@ -33,7 +34,8 @@ def subject_table_creator():
         name TINYTEXT NOT NULL,
         group_number INTEGER NOT NULL,
         number_of_hours_per_week INTEGER NOT NULL,
-        max_hours_per_day INTEGER NOT NULL
+        max_hours_per_day INTEGER NOT NULL,
+        max_student_count_per_group INTEGER NOT NULL
         )
         """
     )
@@ -48,6 +50,7 @@ def student_table_creator():
         CREATE TABLE student(
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TINYTEXT NOT NULL,
+        middle_name TINYTEXT,
         last_name TINYTEXT NOT NULL
         )
         """
@@ -66,8 +69,7 @@ def subject_teacher_table_creator():
         teacher_id INTEGER NOT NULL,
         group_number INTEGER NOT NULL,
         FOREIGN KEY (subject_id) REFERENCES subject(id),
-        FOREIGN KEY (teacher_id) REFERENCES teacher(id),
-        FOREIGN KEY (group_number) REFERENCES subject(group_number)
+        FOREIGN KEY (teacher_id) REFERENCES teacher(id)
         )
         """
     )
@@ -98,33 +100,30 @@ def subject_student_table_creator():
 # subject_student_table_creator()
 
 
-# ADDING
-def add_teacher(name, last_name, monday, tuesday, wednesday, thursday):
-    print(f"added teacher {name} {last_name}")
+# ADD
+def add_teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday):
     cur = conn.cursor()
     cur.execute(
         f"""
-        INSERT INTO teacher(name, last_name, monday, tuesday, wednesday, thursday) VALUES("{name}", "{last_name}", "{monday}", "{tuesday}", "{wednesday}", "{thursday}")
+        INSERT INTO teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday) VALUES("{name}", "{middle_name}", "{last_name}", "{monday}", "{tuesday}", "{wednesday}", "{thursday}")
         """
     )
     conn.commit()
 
-def add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day):
-    print(f"added subject {name}")
+def add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group):
     cur = conn.cursor()
     cur.execute(
         f"""
-        INSERT INTO subject(name, group_number, number_of_hours_per_week, max_hours_per_day) VALUES("{name}", "{group_number}", "{number_of_hours_per_week}", "{max_hours_per_day}")
+        INSERT INTO subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group) VALUES("{name}", "{group_number}", "{number_of_hours_per_week}", "{max_hours_per_day}", "{max_student_count_per_group}")
         """
     )
     conn.commit()
 
-def add_student(name, last_name):
-    print(f"added student {name} {last_name}")
+def add_student(name, middle_name, last_name):
     cur = conn.cursor()
     cur.execute(
         f"""
-        INSERT INTO student(name, last_name) VALUES("{name}", "{last_name}")
+        INSERT INTO student(name, middle_name, last_name) VALUES("{name}", "{middle_name}", "{last_name}")
         """
     )
     conn.commit()
@@ -148,12 +147,12 @@ def add_subject_student(subject_id, student_id):
     conn.commit()
 
 
-#READING
+#GET
 def get_teacher():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT id, name, last_name, monday, tuesday, wednesday, thursday FROM teacher
+        SELECT id, name, middle_name, last_name, monday, tuesday, wednesday, thursday FROM teacher
         ORDER BY last_name ASC
         """
     )
@@ -165,7 +164,7 @@ def get_subject():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT id, name, group_number, number_of_hours_per_week, max_hours_per_day FROM subject
+        SELECT id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group FROM subject
         ORDER BY name ASC
         """
     )
@@ -177,20 +176,8 @@ def get_student():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT id, name, last_name FROM student
+        SELECT id, name, middle_name, last_name FROM student
         ORDER BY last_name ASC
-        """
-    )
-    conn.commit()
-    data = cur.fetchall()
-    return data
-
-def get_subject_teacherid():
-    cur = conn.cursor()
-    cur.execute(
-        f"""
-        SELECT id, subject_id, teacher_id, group_number FROM subject_teacher
-        ORDER BY id ASC
         """
     )
     conn.commit()
@@ -201,11 +188,11 @@ def get_subject_teacher():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT subject_teacher.id, subject.name, teacher.name, teacher.last_name, subject.group_number
-        FROM
-        (subject_teacher LEFT JOIN subject ON subject.id = subject_teacher.subject_id)
+        SELECT subject_teacher.id, subject.id AS subject_id, subject.name AS subject_name,
+        teacher.id AS teacher_id, teacher.name AS teacher_name, teacher.middle_name AS teacher_middle_name, teacher.last_name AS teacher_last_name, subject_teacher.group_number
+        FROM subject_teacher
+        LEFT JOIN subject ON subject.id = subject_teacher.subject_id
         LEFT JOIN teacher ON teacher.id = subject_teacher.teacher_id
-
         """
     )
     conn.commit()
@@ -227,20 +214,13 @@ def get_subject_studentid():
 def get_subject_student():
     cur = conn.cursor()
     cur.execute(
-                f"""
-        SELECT subject_student.id, subject.name, student.name, student.last_name, subject.group_number
-        FROM
-        (subject_student LEFT JOIN subject ON subject.id = subject_student.subject_id)
+        f"""
+        SELECT subject_student.id, subject.id AS subject_id, student.id AS student_id, 
+        student.name AS student_name, student.last_name AS student_last_name
+        FROM subject_student
+        LEFT JOIN subject ON subject.id = subject_student.subject_id
         LEFT JOIN student ON student.id = subject_student.student_id
-
         """
-        # """
-        # SELECT subject_student.id, subject.id AS subject_id, student.id AS student_id, 
-        # student.name AS student_name, student.last_name AS student_last_name
-        # FROM subject_student
-        # LEFT JOIN subject ON subject.id = subject_student.subject_id
-        # LEFT JOIN student ON student.id = subject_student.student_id
-        # """
     )
     conn.commit()
     data = cur.fetchall()
@@ -250,7 +230,6 @@ def get_subject_student():
 
 #REMOVE
 def remove_teacher(id):
-    print(f"deleted teacher {id}")
     for i in range(len(id)):
         cur = conn.cursor()
         cur.execute(
@@ -262,7 +241,6 @@ def remove_teacher(id):
         conn.commit()
 
 def remove_subject(id):
-    print(f"deleted subject {id}")
     for i in range(len(id)):
         cur = conn.cursor()
         cur.execute(
@@ -274,7 +252,6 @@ def remove_subject(id):
         conn.commit()
 
 def remove_student(id):
-    print(f"deleted student {id}")
     for i in range(len(id)):
         cur = conn.cursor()
         cur.execute(
@@ -286,7 +263,6 @@ def remove_student(id):
         conn.commit()
 
 def remove_subject_teacher(id):
-    print(f"deleted subject/teacher {id}")
     for i in range(len(id)):
         cur = conn.cursor()
         cur.execute(
@@ -298,7 +274,6 @@ def remove_subject_teacher(id):
         conn.commit()
 
 def remove_subject_student(id):
-    print(f"deleted subject/student {id}")
     for i in range(len(id)):
         cur = conn.cursor()
         cur.execute(
@@ -311,56 +286,51 @@ def remove_subject_student(id):
 
 
 #UPDATE
-def update_teacher(id, name, last_name, monday, tuesday, wednesday, thursday):
-    print(f"updated teacher {last_name}")
+def update_teacher(id, name, middle_name, last_name, monday, tuesday, wednesday, thursday):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE teacher
-        SET name = "{name}", last_name = "{last_name}", monday = "{monday}", tuesday = "{tuesday}", wednesday = "{wednesday}", thursday = "{thursday}"
+        SET name = "{name}", middle_name = "{middle_name}", last_name = "{last_name}", monday = "{monday}", tuesday = "{tuesday}", wednesday = "{wednesday}", thursday = "{thursday}"
         WHERE id = {id};
         """
     )
     conn.commit()
 
-def update_subject(id, name, group_number, number_of_hours_per_week, max_hours_per_day):
-    print(f"updated subject {name}")
+def update_subject(id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE subject
-        SET name = "{name}", group_number = "{group_number}", number_of_hours_per_week = "{number_of_hours_per_week}", max_hours_per_day = "{max_hours_per_day}"
+        SET name = "{name}", group_number = "{group_number}", number_of_hours_per_week = "{number_of_hours_per_week}", max_hours_per_day = "{max_hours_per_day}", max_student_count_per_group = "{max_student_count_per_group}"
         WHERE id = {id};
         """
     )
     conn.commit()
 
-def update_student(id, name, last_name):
-    print(f"updated student {last_name}")
+def update_student(id, name, middle_name, last_name):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE student
-        SET name = "{name}", last_name = "{last_name}"
+        SET name = "{name}", middle_name = "{middle_name}", last_name = "{last_name}"
         WHERE id = {id};
         """
     )
     conn.commit()
 
-def update_subject_teacher(id, subject_id, teacher_id):
-    print(f"updated subject/teacher")
+def update_subject_teacher(id, subject_id, teacher_id, group_number):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE subject_teacher
-        SET subject_id = "{subject_id}", teacher_id = "{teacher_id}"
+        SET subject_id = "{subject_id}", teacher_id = "{teacher_id}", group_number = "{group_number}"
         WHERE id = {id};
         """
     )
     conn.commit()
 
 def update_subject_student(id, subject_id, student_id):
-    print(f"updated subject/student")
     cur = conn.cursor()
     cur.execute(
         f"""
