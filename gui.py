@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, END
 from tkinter.messagebox import showerror
+import json
 
 from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student
 
@@ -24,7 +25,7 @@ class MainGUI:
 
         # set the position of the window to the center of the screen
         self.window.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
-
+        
         self.window.title("School timetable algorithm")
 
         self.menubar = tk.Menu(self.window)
@@ -72,7 +73,7 @@ class MainGUI:
     def subject(self):
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Subject")  # window title
-        wind.resizable(False, False)  # prevents adjusting Width, Height
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
 
@@ -84,6 +85,7 @@ class MainGUI:
         frame.columnconfigure(2, weight=1)
         frame.columnconfigure(3, weight=1)
         frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(5, weight=1)
 
         selected_subject_id = None
 
@@ -100,16 +102,18 @@ class MainGUI:
             number_of_hours_per_week = ent3.get()
             max_hours_per_day = ent4.get()
             max_student_count_per_group = ent5.get()
+            min_hours_per_day = ent6.get()
             try:
                 int(group_number)
                 int(number_of_hours_per_week)
                 int(max_hours_per_day)
                 int(max_student_count_per_group)
+                int(min_hours_per_day)
             except:
-                showerror("Error", "Group number, number of hours per week, max hours per day and max student count per group need to be a number")
+                showerror("Error", "Group number, number of hours per week, max hours per day, max student count per group need to be a number and min hours per day")
                 return
-            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group:
-                add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group)
+            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group and min_hours_per_day:
+                add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day)
             else:
                 showerror("Error", "All fields must be filled out.")
                 return
@@ -146,11 +150,13 @@ class MainGUI:
             ent3.delete(0, END)
             ent4.delete(0, END)
             ent5.delete(0, END)
+            ent6.delete(0, END)
             ent1.insert(0, subject_list[selected1][1])
             ent2.insert(0, subject_list[selected1][2])
             ent3.insert(0, subject_list[selected1][3])
             ent4.insert(0, subject_list[selected1][4])
             ent5.insert(0, subject_list[selected1][5])
+            ent6.insert(0, subject_list[selected1][6])
             selected_subject_id = subject_list[selected1][0]
 
         def subject_confirm_edit():
@@ -159,18 +165,20 @@ class MainGUI:
             group_number = ent2.get()
             number_of_hours_per_week = ent3.get()
             max_hours_per_day = ent4.get()
-            max_student_count_per_group = ent5.get()          
+            max_student_count_per_group = ent5.get()
+            min_hours_per_day = ent6.get()
             try:
                 int(group_number)
                 int(number_of_hours_per_week)
                 int(max_hours_per_day)
                 int(max_student_count_per_group)
+                int(min_hours_per_day)
             except:
-                showerror("Error", "Group number, number of hours per week, max hours per day and max student count per group need to be a number")
+                showerror("Error", "Group number, number of hours per week, max hours per day, max student count per group need to be a number and min hours per day")
                 return
-            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group:
+            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group and min_hours_per_day:
                 if selected_subject_id != None:
-                    update_subject(selected_subject_id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group)
+                    update_subject(selected_subject_id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day)
                     selected_subject_id = None
                 else:
                     showerror("Error", "Select something to edit.")
@@ -207,6 +215,9 @@ class MainGUI:
         label5 = tk.Label(frame, text="Max student count per group", font=("Arial", 18))
         label5.grid(row=1, column=4, sticky=tk.W+tk.E, **options)
 
+        label6 = tk.Label(frame, text="Min hours per day", font=("Arial", 18))
+        label6.grid(row=1, column=5, sticky=tk.W+tk.E, **options)
+
         ent1 = tk.Entry(frame,  font=("Arial", 18))
         ent1.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
 
@@ -220,7 +231,10 @@ class MainGUI:
         ent4.grid(row=2, column=3, sticky=tk.W+tk.E, **options)
 
         ent5 = tk.Entry(frame,  font=("Arial", 18))
-        ent5.grid(row=2, column=4, sticky=tk.W+tk.E, **options)    
+        ent5.grid(row=2, column=4, sticky=tk.W+tk.E, **options)
+
+        ent6 = tk.Entry(frame,  font=("Arial", 18))
+        ent6.grid(row=2, column=5, sticky=tk.W+tk.E, **options)   
         
         frame.pack(fill="x")
 
@@ -235,7 +249,7 @@ class MainGUI:
     def teacher(self):
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Teacher")  # window title
-        wind.resizable(False, False)  # prevents adjusting Width, Height
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
 
@@ -404,7 +418,7 @@ class MainGUI:
     def student(self):
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Student")  # window title
-        wind.resizable(False, False)  # prevents adjusting Width, Height
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
 
@@ -532,7 +546,7 @@ class MainGUI:
     def subject_teacher(self):
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Subject/Teacher")  # window title
-        wind.resizable(False, False)  # prevents adjusting Width, Height
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
         
@@ -575,7 +589,8 @@ class MainGUI:
             try:
                 int(group_number)
             except:
-                ("Error", "Group number needs to be an integer.")
+                showerror("Error", "Group number needs to be an integer.")
+                return
             if group_number and selected_subject_id and selected_teacher_id:
                 add_subject_teacher(selected_subject_id, selected_teacher_id, group_number)
                 change_list()
@@ -635,7 +650,8 @@ class MainGUI:
             try:
                 int(group_number)
             except:
-                ("Error", "Group number needs to be an integer.")
+                showerror("Error", "Group number needs to be an integer.")
+                return
             if selected_subject_teacher_id != None:
                 update_subject_teacher(selected_subject_teacher_id, selected_subject_id, selected_teacher_id, group_number)
                 selected_subject_teacher_id = None
@@ -715,7 +731,7 @@ class MainGUI:
     def subject_student(self):
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Subject/Student")  # window title
-        wind.resizable(False, False)  # prevents adjusting Width, Height
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
         
@@ -730,16 +746,31 @@ class MainGUI:
         selected_subject_student_id = None
         selected_subject_ids = None
         selected_student_id = None
+        subject_student_list = None
 
         def change_list():
+            nonlocal subject_student_list
             subject_student_list = get_subject_student()
+            subject_student_list = [list(item) for item in subject_student_list]
             subject_list = get_subject()
+            subject_list = [list(item) for item in subject_list]
             student_list = get_student()
 
             subject_student_listbox.delete(0, END)
             subject_listbox.delete(0, END)
             student_listbox.delete(0, END)
-
+            subject_ids = []
+            subject_names = []
+            for i in range(len(subject_student_list)):
+                subject_ids.append(json.loads(subject_student_list[i][1]))
+                subject_student_list[i][1] = subject_ids[i]
+            for i in range(len(subject_ids)):
+                for b in range(len(subject_ids[i])):
+                    for c in range(len(subject_list)):
+                        if subject_ids[i][b] == subject_list[c][0]:
+                            subject_names.append(subject_list[c][1])
+                subject_student_list[i][2] = subject_names
+                subject_names = []           
             for item in subject_student_list:
                 subject_student_listbox.insert("end", f"{item}")
             for item in subject_list:
@@ -748,25 +779,25 @@ class MainGUI:
                 student_listbox.insert("end", f"{item}")
 
         def subject_student_add():
-            nonlocal selected_subject_ids, selected_student_id
-            subject_student_list = get_subject_student()
+            nonlocal selected_subject_ids, selected_student_id, subject_student_list
             for i in range(len(subject_student_list)):
                 if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
                     showerror("Error", "This student already has connections delete previous or edit it.")
                     return
             if selected_subject_ids and selected_student_id:
-                add_subject_student(selected_subject_ids, selected_student_id)
+                json_selected_subject_ids = json.dumps(selected_subject_ids)
+                add_subject_student(json_selected_subject_ids, selected_student_id)
                 change_list()
             else:
                 showerror("Error", "You need to select subject and student.")
                 return
             
         def subject_student_remove():
+            nonlocal subject_student_list
             selected = list(subject_student_listbox.curselection())
             if not selected:
                 showerror("Error", "Select something to remove from student/subject connections.")
                 return
-            subject_student_list = get_subject_student()
             selected_id = [] 
             for i in selected:
                 selected_id.append(subject_student_list[i][0])
@@ -775,8 +806,9 @@ class MainGUI:
 
         
         def subject_student_edit():
-            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id
-            subject_list = get_subject()
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
+            temp = get_subject_student()
+            print(temp)
             student_list = get_student()
             selected = list(subject_student_listbox.curselection())
             if not selected:
@@ -785,13 +817,10 @@ class MainGUI:
             elif len(selected) > 1:
                 showerror("Error", "Select only one to edit.")
                 return
-            subject_student_list = get_subject_student() 
             selected_subject_student_id = subject_student_list[selected[0]][0]
             selected_subject_ids = subject_student_list[selected[0]][1]
             selected_student_id = subject_student_list[selected[0]][3]
-            for i in range(len(subject_list)):
-                if subject_list[i][0] == subject_student_list[selected[0]][1]:
-                    label3.config(text=f"{subject_list[i]}")
+            label3.config(text=f"{subject_student_list[selected[0]][2]}")
             for i in range(len(student_list)):
                 if student_list[i][0] == subject_student_list[selected[0]][3]:
                     label4.config(text=f"{student_list[i]}")
@@ -799,8 +828,7 @@ class MainGUI:
 
 
         def subject_student_confirm_edit():
-            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id
-            subject_student_list = get_subject_student()
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
             for i in range(len(subject_student_list)):
                 if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
                     showerror("Error", "This student already has connections delete previous or edit it.")
@@ -823,7 +851,7 @@ class MainGUI:
             if selected:
                 for i in range(len(selected)):
                     selected_ids.append(subject_list[selected[i]][0])
-                    selected_label.append(subject_list[selected[i]])                
+                    selected_label.append(subject_list[selected[i]][1])
                 label3.config(text=f"{selected_label}")
                 selected_subject_ids = selected_ids
                         
@@ -855,7 +883,7 @@ class MainGUI:
         label2 = tk.Label(frame, text="Student", font=("Arial", 18))
         label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
 
-        label3 = tk.Label(frame, text="No subject selected", font=("Arial", 18))
+        label3 = tk.Label(frame, text="No subject selected", font=("Arial", 10))
         label3.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
 
         label4 = tk.Label(frame, text="No student selected", font=("Arial", 18))
@@ -871,7 +899,7 @@ class MainGUI:
         
         frame.pack(fill="x")
 
-        subject_student_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 18))
+        subject_student_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 10))
         subject_student_listbox.pack(**options)   
 
         change_list()
