@@ -728,7 +728,7 @@ class MainGUI:
 
 
     #SUBJECT/STUDENT
-    def subject_student(self):
+    def subject_student(self):  
         wind = tk.Toplevel(self.window)  # creates a new window
         wind.title("Subject/Student")  # window title
         # wind.resizable(False, False)  # prevents adjusting Width, Height
@@ -750,15 +750,13 @@ class MainGUI:
 
         def change_list():
             nonlocal subject_student_list
+            #this
             subject_student_list = get_subject_student()
             subject_student_list = [list(item) for item in subject_student_list]
             subject_list = get_subject()
             subject_list = [list(item) for item in subject_list]
             student_list = get_student()
-
-            subject_student_listbox.delete(0, END)
-            subject_listbox.delete(0, END)
-            student_listbox.delete(0, END)
+            
             subject_ids = []
             subject_names = []
             for i in range(len(subject_student_list)):
@@ -770,7 +768,11 @@ class MainGUI:
                         if subject_ids[i][b] == subject_list[c][0]:
                             subject_names.append(subject_list[c][1])
                 subject_student_list[i][2] = subject_names
-                subject_names = []           
+                subject_names = []
+            #to this
+            subject_student_listbox.delete(0, END)
+            subject_listbox.delete(0, END)
+            student_listbox.delete(0, END)
             for item in subject_student_list:
                 subject_student_listbox.insert("end", f"{item}")
             for item in subject_list:
