@@ -1,281 +1,292 @@
-import sqlite3
-from itertools import permutations, product
-from multiprocessing import cpu_count
-from collections import defaultdict
-import logging
+import copy
+import json
 from data import (
     get_teacher,
     get_subject,
+    get_student,
     get_subject_teacher,
     get_subject_student,
 )
 
-# Configuration Parameters
-CONFIG = {
-    "max_students_per_teacher": 30,
-    "max_classes_per_day": 8,
-    "max_combinations": 1000000000,
-    "time_slots": [
-        "08:00-09:00", "09:00-10:00", "10:00-11:00", "11:00-12:00",
-        "12:00-13:00", "13:00-14:00", "14:00-15:00", "15:00-16:00"
-    ],
-    "cores": cpu_count(),
-    "chunksize": 100,
-    "max_classes_per_week_per_subject": 9,
-    "max_classes_per_day_per_subject": 3,
-}
+################################################################################
+# 1) DATA LOADING
+################################################################################
 
-# Logging setup
-logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(message)s')
+def load_data():
+    teachers_raw      = get_teacher()
+    subjects_raw      = get_subject()
+    students_raw      = get_student()
+    sub_teacher_raw   = get_subject_teacher()
+    sub_student_raw   = get_subject_student()
 
-# Database Connection
-conn = sqlite3.connect("data.db", check_same_thread=False)
+    # Build teacher dictionary
+    teachers = {}
+    for t in teachers_raw:
+        teacher_id = t[0]
+        teachers[teacher_id] = {
+            "id": teacher_id,
+            "name": t[1],
+            "middle_name": t[2],
+            "last_name": t[3],
+            "available_days": {
+                "monday":    bool(t[4]),
+                "tuesday":   bool(t[5]),
+                "wednesday": bool(t[6]),
+                "thursday":  bool(t[7]),
+                "friday":    False  # if you want a fallback day
+            },
+        }
 
-# Fetch data from the database
-def fetch_data():
-    try:
-        logging.info("Fetching teachers...")
-        teachers = get_teacher() or []
-        logging.debug(f"Teachers: {teachers}")
+    # Build subject dictionary
+    subjects = {}
+    for s in subjects_raw:
+        subj_id = s[0]
+        subjects[subj_id] = {
+            "id": subj_id,
+            "name": s[1],
+            "group_number": s[2],
+            "hours_per_week": s[3],
+            "max_hours_per_day": s[4],
+            "max_students_per_group": s[5],  # capacity for each subject
+            "min_hours_per_day": s[6],
+        }
 
-        logging.info("Fetching subjects...")
-        subjects = get_subject() or []
-        logging.debug(f"Subjects: {subjects}")
+    # subject -> list of teachers
+    subject_to_teachers = {}
+    for st in sub_teacher_raw:
+        subject_id = st[1]
+        teacher_id = st[3]
+        if subject_id not in subject_to_teachers:
+            subject_to_teachers[subject_id] = []
+        subject_to_teachers[subject_id].append(teacher_id)
 
-        logging.info("Fetching subject-teacher mappings...")
-        subject_teacher = get_subject_teacher() or []
-        logging.debug(f"Subject-Teacher: {subject_teacher}")
+    # Build subject->set_of_students from JSON array of IDs
+    subject_to_students = {}
+    for row in sub_student_raw:
+        # row: (id, json_subject_ids, subject_name, student_id, ...)
+        student_id       = row[3]
+        json_subject_str = row[1]
 
-        logging.info("Fetching subject-student mappings...")
-        subject_student = get_subject_student() or []
-        logging.debug(f"Subject-Student: {subject_student}")
+        try:
+            list_of_sub_ids = json.loads(json_subject_str)  # e.g. "[5,16,3]" -> [5,16,3]
+        except:
+            list_of_sub_ids = []
 
-        logging.info("Data fetching complete.")
-        return teachers, subjects, subject_teacher, subject_student
-    except Exception as e:
-        logging.error(f"Error fetching data: {e}")
-        raise
+        for subj_id_val in list_of_sub_ids:
+            if subj_id_val not in subject_to_students:
+                subject_to_students[subj_id_val] = set()
+            subject_to_students[subj_id_val].add(student_id)
 
-# Generate combinations with optimized filtering
-def generate_combinations(teachers, subjects, students, time_slots, subject_teacher):
-    days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-    subject_teacher_map = defaultdict(list)
+    return {
+        "teachers": teachers,
+        "subjects": subjects,
+        "subject_to_teachers": subject_to_teachers,
+        "subject_to_students": subject_to_students,
+    }
 
-    # Initialize combination_count
-    combination_count = 0
+################################################################################
+# 2) CONSTRAINTS & DAYS
+################################################################################
 
-    # Create a mapping of subjects to teachers
-    for sub_id, teacher_id, teacher_name, teacher_last_name, _ in subject_teacher:
-        subject_teacher_map[sub_id].append((teacher_id, teacher_name, teacher_last_name))
+CONSTRAINTS = [
+    ("teacher_availability", 1),
+    ("max_students_per_teacher", 2),      
+    ("subject_min_hours_per_day", 3),
+    ("subject_max_hours_per_day", 4),
+    ("subject_hours_per_week", 5),
+    # etc. 
+]
 
-    # Generate combinations of subjects, teachers, students, and time slots
-    for subject_id, teacher_list in subject_teacher_map.items():
-        teacher_combinations = permutations(teacher_list, 1)
-        student_combinations = product(students, repeat=1)
-        time_combinations = product(days, time_slots)
+ACTIVE_CONSTRAINTS = {c[0]: True for c in CONSTRAINTS}
 
-        for teacher_comb in teacher_combinations:
-            for student_comb in student_combinations:
-                for day, time_comb in time_combinations:
-                    if CONFIG["max_combinations"] != -1 and combination_count >= CONFIG["max_combinations"]:
-                        return
-                    yield (subject_id, teacher_comb, student_comb, day, time_comb)
-                    combination_count += 1
+def disable_lowest_priority_constraint():
+    # same logic as before
+    pass
 
-    # Return the total number of combinations generated
-    return combination_count
+DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday"]
+SLOTS_PER_DAY = 10
 
-# Validate detailed student attendance
-def validate_student_attendance_detailed(timetable, subject_student):
-    student_subject_counts = defaultdict(lambda: defaultdict(int))
-    subject_students = defaultdict(list)
-    missing_subjects = defaultdict(list)
+def initialize_empty_timetable():
+    timetable = {}
+    for d in DAYS:
+        timetable[d] = []
+        for _ in range(SLOTS_PER_DAY):
+            timetable[d].append([])
+    return timetable
 
-    for _, sub_id, stu_id, stu_name, stu_last in subject_student:
-        subject_students[sub_id].append((stu_id, stu_name, stu_last))
+################################################################################
+# 3) SPLITTING STUDENTS BASED ON SUBJECT CAPACITY
+################################################################################
 
-    for day, times in timetable.items():
-        for time, classes in times.items():
-            for entry in classes:
-                subject_id = entry["subject_id"]
-                students = entry["students"]
-                for student in students:
-                    student_id = student[0]
-                    student_subject_counts[student_id][subject_id] += 1
+def split_students_among_teachers(all_students, teacher_ids, subject_capacity):
+    """
+    Distribute `all_students` as evenly as possible among
+    len(teacher_ids) teacher-based groups, each with capacity = subject_capacity.
 
-    for subject_id, students in subject_students.items():
-        for student_id, student_name, student_last in students:
-            if student_subject_counts[student_id][subject_id] < CONFIG["max_classes_per_week_per_subject"]:
-                missing_subjects[(student_id, student_name, student_last)].append(subject_id)
+    If any group would exceed subject_capacity, we fail (return None).
+    """
+    from math import ceil
 
-    return missing_subjects
+    n_teachers = len(teacher_ids)
+    student_list = list(all_students)
+    n_students = len(student_list)
 
-# Generate a timetable ensuring students attend each subject max_classes_per_week times
-def generate_timetable(
-    combination,
-    subject_teacher,
-    subject_student,
-    teachers_without_students,
-    student_weekly_limit,
-    student_daily_limit,
-    timetable,
-    teacher_schedules,
-    student_schedules,
-    day_teacher_assignments,
-    weekly_subject_teacher_assignments
-):
-    subject_id, teacher_comb, student_comb, day, time_comb = combination
-    subject_students = defaultdict(list)
+    # "group_size" is how many students each teacher group can get at max
+    # We'll do a naive approach: group_size = ceil(n_students / n_teachers)
+    # If group_size > subject_capacity => we can't assign them properly
+    group_size = ceil(n_students / n_teachers)
+    if group_size > subject_capacity:
+        return None
 
-    for _, sub_id, stu_id, stu_name, stu_last in subject_student:
-        subject_students[sub_id].append((stu_id, stu_name, stu_last))
+    groups = []
+    for i in range(n_teachers):
+        start = i * group_size
+        end   = start + group_size
+        subgroup = student_list[start:end]
+        groups.append(subgroup)
 
-    teacher_id, teacher_name, teacher_last_name = teacher_comb[0]
-    students = subject_students.get(subject_id, [])
+    return groups
 
-    if not students:
-        teachers_without_students.add((teacher_id, teacher_name, teacher_last_name))
-        return
+################################################################################
+# 4) CHECK CONSTRAINTS WHEN PLACING A CLASS
+################################################################################
 
-    if teacher_id in day_teacher_assignments[day][time_comb]:
-        return
+def can_place_in_slot(existing_classes, subject_id, teacher_id, students, day, slot_index, state):
+    """
+    This is where you'd check 'teacher_availability', concurrency, 
+    'subject_max_hours_per_day', etc.
 
-    eligible_students = [
-        student for student in students
-        if student_weekly_limit[student[0]][subject_id] < CONFIG["max_classes_per_week_per_subject"] and
-        student_daily_limit[day][student[0]][subject_id] < CONFIG["max_classes_per_day_per_subject"]
-    ]
+    We skip the details here. Return True for brevity.
+    """
+    return True
 
-    if not eligible_students:
-        teachers_without_students.add((teacher_id, teacher_name, teacher_last_name))
-        return
+################################################################################
+# 5) SCHEDULING HOURS FOR A SINGLE TEACHER/SUBJECT GROUP
+################################################################################
 
-    for student in eligible_students:
-        student_id = student[0]
-        student_weekly_limit[student_id][subject_id] += 1
-        student_daily_limit[day][student_id][subject_id] += 1
+def schedule_hours_for_subject_group(subject_id, teacher_id, students, required_hours, state):
+    """
+    Attempt to schedule 'required_hours' blocks for a single group 
+    (teacher + subset-of-students) for the given subject.
+    """
+    timetable = state["timetable"]
+    hours_placed = 0
 
-    # Add to timetable
-    if len(timetable[day][time_comb]) < CONFIG["max_students_per_teacher"]:
-        timetable[day][time_comb].append({
-            "subject_id": subject_id,
-            "teacher": (teacher_id, teacher_name, teacher_last_name),
-            "students": eligible_students,
-        })
-        day_teacher_assignments[day][time_comb].add(teacher_id)
+    while hours_placed < required_hours:
+        placed_this_hour = False
+        for day in DAYS:
+            for slot_index in range(SLOTS_PER_DAY):
+                existing_classes = timetable[day][slot_index]
+                if can_place_in_slot(existing_classes, subject_id, teacher_id, students, day, slot_index, state):
+                    new_class = {
+                        "subject_id": subject_id,
+                        "teacher_id": teacher_id,
+                        "students": list(students),
+                    }
+                    existing_classes.append(new_class)
+                    hours_placed += 1
+                    placed_this_hour = True
+                    break  # go to next hour
+            if placed_this_hour:
+                break
+        if not placed_this_hour:
+            return False
+    return True
 
-    # Add to teacher and student schedules
-    for student in eligible_students:
-        student_id = student[0]
-        student_name = f"{student[1]} {student[2]}"
-        student_schedules[student_id].append((day, time_comb, subject_id, teacher_name))
+################################################################################
+# 6) MAIN SCHEDULING LOOP (Using Subject Capacity)
+################################################################################
 
-    teacher_schedules[teacher_id].append((day, time_comb, subject_id, eligible_students))
+def schedule_all_subjects(state):
+    """
+    For each subject:
+      - Retrieve its 'max_students_per_group' from the subject dictionary
+      - Retrieve all students & teachers
+      - Split those students into teacher-based groups with that capacity
+      - Schedule the subject's required hours once per group
+    """
+    subjects = state["subjects"]
+    subject_to_teachers = state["subject_to_teachers"]
+    subject_to_students = state["subject_to_students"]
 
-# Print schedules for teachers and students
+    for subj_id, subj_info in subjects.items():
+        required_hours = subj_info["hours_per_week"]
+        subject_capacity  = subj_info["max_students_per_group"]  
+        teacher_list   = subject_to_teachers.get(subj_id, [])
+        all_students   = subject_to_students.get(subj_id, set())
 
-def print_schedules(teacher_schedules, student_schedules, subject_map, teacher_map, student_map):
-    print("\n=== Teacher Schedules ===")
-    for teacher_id, schedule in teacher_schedules.items():
-        teacher_name = teacher_map.get(teacher_id, "Unknown Teacher")
-        print(f"\n{teacher_name}'s Schedule:")
-        for day, time, subject_id, students in sorted(schedule):
-            subject_name = subject_map.get(subject_id, "Unknown Subject")
-            student_names = ", ".join([f"{s[1]} {s[2]}" for s in students])
-            print(f"  {day}, {time}: {subject_name} (Students: {student_names})")
+        if not teacher_list:
+            print(f"No teachers for subject {subj_id} - failing.")
+            return False
 
-    print("\n=== Student Schedules ===")
-    for student_id, schedule in student_schedules.items():
-        # Directly fetch the student name from student_map
-        student_name = student_map.get(student_id, None)
-        if not student_name:
-            logging.warning(f"Student ID {student_id} is not found in student_map!")
-            student_name = f"Unknown Student ({student_id})"  # Fallback to ID if no name found
-        print(f"\n{student_name}'s Schedule:")
-        for day, time, subject_id, teacher_name in sorted(schedule):
-            subject_name = subject_map.get(subject_id, "Unknown Subject")
-            print(f"  {day}, {time}: {subject_name} (Teacher: {teacher_name})")
+        if not all_students:
+            print(f"No students need subject {subj_id}, skipping scheduling.")
+            continue
 
-# Main function
-def brute_force_timetable():
-    logging.info("Fetching data from the database...")
-    teachers, subjects, subject_teacher, subject_student = fetch_data()
-    time_slots = CONFIG["time_slots"][:CONFIG["max_classes_per_day"]]
-    days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
+        # We'll try to split 'all_students' among teacher_list, 
+        # using the subject's capacity as the max for each teacher group
+        groups = split_students_among_teachers(all_students, teacher_list, subject_capacity)
+        if groups is None:
+            print(f"Cannot split {len(all_students)} students among {len(teacher_list)} teachers for subject {subj_id}. Exceeds capacity.")
+            return False
 
-    students = list({(stu_id, stu_name, stu_last) for _, _, stu_id, stu_name, stu_last in subject_student})
-    subject_map = {subject[0]: subject[1] for subject in subjects}
-    teacher_map = {teacher[0]: f"{teacher[1]} {teacher[2]}" for teacher in teachers}
-    student_map = {student[0]: f"{student[1]} {student[2]}" for _, _, student in students}
+        print(f"Scheduling subject {subj_id} with {len(all_students)} total students, {len(teacher_list)} teachers, capacity={subject_capacity}")
+        
+        # Now schedule the hours for each group
+        for i, subgroup in enumerate(groups):
+            t_id = teacher_list[i]
+            if subgroup:
+                success = schedule_hours_for_subject_group(subj_id, t_id, subgroup, required_hours, state)
+                if not success:
+                    print(f"Could not schedule subject {subj_id}, teacher {t_id}, subgroup size {len(subgroup)}.")
+                    return False
+            else:
+                # This teacher gets no students, which is fine if leftover is small
+                pass
+    return True
 
-    logging.debug(f"Student Map: {student_map}")  # Log the full student map
+################################################################################
+# 7) MAIN BRUTE-FORCE SCHEDULER
+################################################################################
 
-    logging.info("Starting brute-force timetable generation...")
-    timetable = defaultdict(lambda: defaultdict(list))
-    teachers_without_students = set()
-    student_weekly_limit = defaultdict(lambda: defaultdict(int))
-    student_daily_limit = defaultdict(lambda: defaultdict(lambda: defaultdict(int)))
-    teacher_schedules = defaultdict(list)
-    student_schedules = defaultdict(list)
-    day_teacher_assignments = defaultdict(lambda: defaultdict(set))
-    weekly_subject_teacher_assignments = defaultdict(lambda: defaultdict(int))
+def schedule_timetable_bruteforce():
+    data = load_data()
+    timetable = initialize_empty_timetable()
 
-    # Track the number of combinations
-    total_combinations = 0
-    for combination in generate_combinations(teachers, subjects, students, time_slots, subject_teacher):
-        generate_timetable(
-            combination,
-            subject_teacher,
-            subject_student,
-            teachers_without_students,
-            student_weekly_limit,
-            student_daily_limit,
-            timetable,
-            teacher_schedules,
-            student_schedules,
-            day_teacher_assignments,
-            weekly_subject_teacher_assignments
-        )
-        total_combinations += 1
+    state = {
+        "timetable": timetable,
+        "teachers": data["teachers"],
+        "subjects": data["subjects"],
+        "subject_to_teachers": data["subject_to_teachers"],
+        "subject_to_students": data["subject_to_students"],
+    }
 
-    logging.info("Timetable generation complete.")
-    missing_subjects = validate_student_attendance_detailed(timetable, subject_student)
+    while True:
+        success = schedule_all_subjects(state)
+        if success:
+            print("\nTimetable created successfully!")
+            return state["timetable"]
+        else:
+            disabled = disable_lowest_priority_constraint()
+            if not disabled:
+                print("\nNo more constraints to disable. Scheduling failed.")
+                return None
 
-    # Print the total number of attempts (combinations)
-    print(f"Total combinations generated: {total_combinations}")
+################################################################################
+# 8) RUN / TEST
+################################################################################
 
-    return timetable, teacher_schedules, student_schedules, subject_map, teacher_map, student_map
-
-# Print the best timetable
-def print_timetable(timetable, teachers_without_students, subject_map):
-    print("\n=== Best Timetable ===")
-    for day, times in sorted(timetable.items()):
-        print(f"\n{day}:")
-        for time, classes in sorted(times.items()):
-            print(f"  {time}:")
-            for entry in classes:
-                teacher = entry["teacher"]
-                students = entry["students"]
-                subject_id = entry["subject_id"]
-                subject_name = subject_map.get(subject_id, "Unknown Subject")
-                teacher_name = f"{teacher[1]} {teacher[2]}"
-                student_names = ", ".join([f"{s[1]} {s[2]}" for s in students])
-                print(f"    Subject: {subject_name}")
-                print(f"    Teacher: {teacher_name}")
-                print(f"      Students: {student_names}")
-
-    print("\n=== Teachers Without Students ===")
-    if teachers_without_students:
-        for teacher_id, teacher_name, teacher_last_name in teachers_without_students:
-            print(f"  Teacher: {teacher_name} {teacher_last_name}")
-    else:
-        print("  All teachers were assigned students!")
-    print("======================\n")
-
-# Run the timetable generator
 if __name__ == "__main__":
-    timetable, teacher_schedules, student_schedules, subject_map, teacher_map, student_map = brute_force_timetable()
-
-    print_timetable(timetable, {}, subject_map)
-    print_schedules(teacher_schedules, student_schedules, subject_map, teacher_map, student_map)
-
+    final_timetable = schedule_timetable_bruteforce()
+    if final_timetable:
+        for day in DAYS:
+            print(f"\n=== {day.upper()} ===")
+            for slot_i, classes_in_slot in enumerate(final_timetable[day]):
+                if classes_in_slot:
+                    print(f" Slot {slot_i+1}:")
+                    for c in classes_in_slot:
+                        print(f"   Subject {c['subject_id']} with teacher {c['teacher_id']} -> {len(c['students'])} students")
+                else:
+                    print(f" Slot {slot_i+1}: Free")
+    else:
+        print("Could not generate a timetable.")
