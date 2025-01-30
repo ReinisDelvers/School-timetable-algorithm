@@ -33,7 +33,7 @@ def load_data():
                 "tuesday":   bool(t[5]),
                 "wednesday": bool(t[6]),
                 "thursday":  bool(t[7]),
-                "friday":    False  # if you want a fallback day
+                "friday":    False
             },
         }
 
@@ -47,31 +47,32 @@ def load_data():
             "group_number": s[2],
             "hours_per_week": s[3],
             "max_hours_per_day": s[4],
-            "max_students_per_group": s[5],  # capacity for each subject
+            "max_students_per_group": s[5],  # capacity per group
             "min_hours_per_day": s[6],
         }
 
-    # subject -> list of teachers
-    subject_to_teachers = {}
-    for st in sub_teacher_raw:
-        subject_id = st[1]
-        teacher_id = st[3]
-        if subject_id not in subject_to_teachers:
-            subject_to_teachers[subject_id] = []
-        subject_to_teachers[subject_id].append(teacher_id)
+    # For subject->teacher, we also store group_number from `subject_teacher`
+    # We'll build a dictionary: subject_teacher_groups[subj_id] = [ (teacher_id, group_number), ... ]
+    subject_teacher_groups = {}
+    for row in sub_teacher_raw:
+        # row looks like: (id, subject_id, subject_name, teacher_id, teacher_name, t_mid, t_last, group_number)
+        st_id = row[0]
+        subject_id = row[1]
+        teacher_id = row[3]
+        group_num  = row[7]  # the group_number for this teacher-subject link
+        if subject_id not in subject_teacher_groups:
+            subject_teacher_groups[subject_id] = []
+        subject_teacher_groups[subject_id].append( (teacher_id, group_num) )
 
-    # Build subject->set_of_students from JSON array of IDs
+    # Build subject->set_of_students from JSON array
     subject_to_students = {}
     for row in sub_student_raw:
-        # row: (id, json_subject_ids, subject_name, student_id, ...)
         student_id       = row[3]
         json_subject_str = row[1]
-
         try:
-            list_of_sub_ids = json.loads(json_subject_str)  # e.g. "[5,16,3]" -> [5,16,3]
+            list_of_sub_ids = json.loads(json_subject_str)
         except:
             list_of_sub_ids = []
-
         for subj_id_val in list_of_sub_ids:
             if subj_id_val not in subject_to_students:
                 subject_to_students[subj_id_val] = set()
@@ -80,21 +81,21 @@ def load_data():
     return {
         "teachers": teachers,
         "subjects": subjects,
-        "subject_to_teachers": subject_to_teachers,
+        # No longer need a simple subject_to_teachers since we have subject_teacher_groups
+        "subject_teacher_groups": subject_teacher_groups, 
         "subject_to_students": subject_to_students,
     }
 
 ################################################################################
-# 2) CONSTRAINTS & DAYS
+# 2) CONSTRAINTS & TIMETABLE INIT
 ################################################################################
 
 CONSTRAINTS = [
     ("teacher_availability", 1),
-    ("max_students_per_teacher", 2),      
+    ("max_students_per_teacher", 2),
     ("subject_min_hours_per_day", 3),
     ("subject_max_hours_per_day", 4),
     ("subject_hours_per_week", 5),
-    # etc. 
 ]
 
 ACTIVE_CONSTRAINTS = {c[0]: True for c in CONSTRAINTS}
@@ -115,60 +116,52 @@ def initialize_empty_timetable():
     return timetable
 
 ################################################################################
-# 3) SPLITTING STUDENTS BASED ON SUBJECT CAPACITY
+# 3) SPLITTING INTO MULTIPLE GROUPS PER SUBJECT
 ################################################################################
 
-def split_students_among_teachers(all_students, teacher_ids, subject_capacity):
+def split_students_by_total_groups(all_students, total_groups, subject_capacity):
     """
-    Distribute `all_students` as evenly as possible among
-    len(teacher_ids) teacher-based groups, each with capacity = subject_capacity.
+    We have total_groups = sum of all group_number from subject_teacher for this subject.
+    We want to split 'all_students' into 'total_groups' sub-lists, 
+    each not exceeding subject_capacity if possible.
 
-    If any group would exceed subject_capacity, we fail (return None).
+    Return a list of these subgroups. If we can't respect capacity, return None.
     """
     from math import ceil
 
-    n_teachers = len(teacher_ids)
-    student_list = list(all_students)
-    n_students = len(student_list)
+    n_students = len(all_students)
+    if total_groups == 0:
+        return []
 
-    # "group_size" is how many students each teacher group can get at max
-    # We'll do a naive approach: group_size = ceil(n_students / n_teachers)
-    # If group_size > subject_capacity => we can't assign them properly
-    group_size = ceil(n_students / n_teachers)
+    # naive approach: group_size = ceil(n_students / total_groups)
+    # if group_size > subject_capacity => fail
+    group_size = ceil(n_students / total_groups)
     if group_size > subject_capacity:
         return None
 
-    groups = []
-    for i in range(n_teachers):
-        start = i * group_size
-        end   = start + group_size
-        subgroup = student_list[start:end]
-        groups.append(subgroup)
+    student_list = list(all_students)
+    subgroups = []
+    index = 0
+    for _ in range(total_groups):
+        chunk = student_list[index : index + group_size]
+        subgroups.append(chunk)
+        index += group_size
 
-    return groups
+    return subgroups
 
 ################################################################################
 # 4) CHECK CONSTRAINTS WHEN PLACING A CLASS
 ################################################################################
 
 def can_place_in_slot(existing_classes, subject_id, teacher_id, students, day, slot_index, state):
-    """
-    This is where you'd check 'teacher_availability', concurrency, 
-    'subject_max_hours_per_day', etc.
-
-    We skip the details here. Return True for brevity.
-    """
+    # Real checks omitted for brevity. Return True.
     return True
 
 ################################################################################
-# 5) SCHEDULING HOURS FOR A SINGLE TEACHER/SUBJECT GROUP
+# 5) SCHEDULING HOURS FOR A SINGLE CLASS
 ################################################################################
 
 def schedule_hours_for_subject_group(subject_id, teacher_id, students, required_hours, state):
-    """
-    Attempt to schedule 'required_hours' blocks for a single group 
-    (teacher + subset-of-students) for the given subject.
-    """
     timetable = state["timetable"]
     hours_placed = 0
 
@@ -176,17 +169,17 @@ def schedule_hours_for_subject_group(subject_id, teacher_id, students, required_
         placed_this_hour = False
         for day in DAYS:
             for slot_index in range(SLOTS_PER_DAY):
-                existing_classes = timetable[day][slot_index]
-                if can_place_in_slot(existing_classes, subject_id, teacher_id, students, day, slot_index, state):
+                if can_place_in_slot(timetable[day][slot_index], subject_id, teacher_id, students, day, slot_index, state):
+                    # place
                     new_class = {
                         "subject_id": subject_id,
                         "teacher_id": teacher_id,
                         "students": list(students),
                     }
-                    existing_classes.append(new_class)
+                    timetable[day][slot_index].append(new_class)
                     hours_placed += 1
                     placed_this_hour = True
-                    break  # go to next hour
+                    break
             if placed_this_hour:
                 break
         if not placed_this_hour:
@@ -194,59 +187,71 @@ def schedule_hours_for_subject_group(subject_id, teacher_id, students, required_
     return True
 
 ################################################################################
-# 6) MAIN SCHEDULING LOOP (Using Subject Capacity)
+# 6) SCHEDULING USING group_number FROM subject_teacher
 ################################################################################
 
 def schedule_all_subjects(state):
     """
     For each subject:
-      - Retrieve its 'max_students_per_group' from the subject dictionary
-      - Retrieve all students & teachers
-      - Split those students into teacher-based groups with that capacity
-      - Schedule the subject's required hours once per group
+      1) Sum up the 'group_number' for each teacher in subject_teacher. That = total_groups
+      2) Split subject's students into 'total_groups' subgroups.
+      3) Assign subgroups in the order of the teacher's listing. 
+         If teacher T has group_number=2, they get 2 subgroups => each is scheduled 
+         separately as a distinct class (subgroup) for 'required_hours'.
     """
     subjects = state["subjects"]
-    subject_to_teachers = state["subject_to_teachers"]
+    subject_teacher_groups = state["subject_teacher_groups"]  # (teacher_id, group_number)
     subject_to_students = state["subject_to_students"]
 
     for subj_id, subj_info in subjects.items():
-        required_hours = subj_info["hours_per_week"]
-        subject_capacity  = subj_info["max_students_per_group"]  
-        teacher_list   = subject_to_teachers.get(subj_id, [])
-        all_students   = subject_to_students.get(subj_id, set())
+        required_hours       = subj_info["hours_per_week"]
+        subject_capacity     = subj_info["max_students_per_group"]
+        all_students         = subject_to_students.get(subj_id, set())
+        teacher_groups_info  = subject_teacher_groups.get(subj_id, [])
 
-        if not teacher_list:
-            print(f"No teachers for subject {subj_id} - failing.")
+        if not teacher_groups_info:
+            print(f"No teacher-group info for subject {subj_id}. Failing.")
             return False
 
         if not all_students:
-            print(f"No students need subject {subj_id}, skipping scheduling.")
+            print(f"No students for subject {subj_id}, skipping scheduling.")
             continue
 
-        # We'll try to split 'all_students' among teacher_list, 
-        # using the subject's capacity as the max for each teacher group
-        groups = split_students_among_teachers(all_students, teacher_list, subject_capacity)
-        if groups is None:
-            print(f"Cannot split {len(all_students)} students among {len(teacher_list)} teachers for subject {subj_id}. Exceeds capacity.")
+        # sum the group_number from all teachers for this subject
+        total_groups = sum(pair[1] for pair in teacher_groups_info)
+        if total_groups == 0:
+            print(f"Subject {subj_id} has teacher info but total group_number=0. Skipping.")
+            continue
+
+        # split students into 'total_groups' sub-lists, each not exceeding subject_capacity if possible
+        splitted = split_students_by_total_groups(all_students, total_groups, subject_capacity)
+        if splitted is None:
+            print(f"Subject {subj_id}: cannot split {len(all_students)} students into {total_groups} groups with capacity={subject_capacity}. Failing.")
             return False
 
-        print(f"Scheduling subject {subj_id} with {len(all_students)} total students, {len(teacher_list)} teachers, capacity={subject_capacity}")
-        
-        # Now schedule the hours for each group
-        for i, subgroup in enumerate(groups):
-            t_id = teacher_list[i]
-            if subgroup:
-                success = schedule_hours_for_subject_group(subj_id, t_id, subgroup, required_hours, state)
-                if not success:
-                    print(f"Could not schedule subject {subj_id}, teacher {t_id}, subgroup size {len(subgroup)}.")
-                    return False
-            else:
-                # This teacher gets no students, which is fine if leftover is small
-                pass
+        # Now we iterate teacher_groups_info in order, assigning 'group_number' sub-lists to each teacher
+        idx_subgroup = 0
+        print(f"\nSubject {subj_id} => total {len(all_students)} students, total {total_groups} groups")
+        for (teacher_id, grp_count) in teacher_groups_info:
+            for _ in range(grp_count):
+                if idx_subgroup >= len(splitted):
+                    break  # safety
+                subgroup = splitted[idx_subgroup]
+                idx_subgroup += 1
+
+                if subgroup:
+                    success = schedule_hours_for_subject_group(subj_id, teacher_id, subgroup, required_hours, state)
+                    if not success:
+                        print(f"Failed scheduling subgroup of size {len(subgroup)} for subject {subj_id} + teacher {teacher_id}.")
+                        return False
+                else:
+                    # empty group
+                    pass
+
     return True
 
 ################################################################################
-# 7) MAIN BRUTE-FORCE SCHEDULER
+# 7) MAIN SCHEDULER
 ################################################################################
 
 def schedule_timetable_bruteforce():
@@ -257,7 +262,7 @@ def schedule_timetable_bruteforce():
         "timetable": timetable,
         "teachers": data["teachers"],
         "subjects": data["subjects"],
-        "subject_to_teachers": data["subject_to_teachers"],
+        "subject_teacher_groups": data["subject_teacher_groups"],  # used in scheduling
         "subject_to_students": data["subject_to_students"],
     }
 
@@ -285,7 +290,7 @@ if __name__ == "__main__":
                 if classes_in_slot:
                     print(f" Slot {slot_i+1}:")
                     for c in classes_in_slot:
-                        print(f"   Subject {c['subject_id']} with teacher {c['teacher_id']} -> {len(c['students'])} students")
+                        print(f"   Subject {c['subject_id']} w/ teacher {c['teacher_id']} -> {len(c['students'])} students")
                 else:
                     print(f" Slot {slot_i+1}: Free")
     else:
