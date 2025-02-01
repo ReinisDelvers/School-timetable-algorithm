@@ -1,135 +1,57 @@
-import copy
+#!/usr/bin/env python3
+import itertools
+import math
 import json
-import multiprocessing
-from math import ceil
-from data import (
-    get_teacher,
-    get_subject,
-    get_student,
-    get_subject_teacher,
-    get_subject_student,
-)
-import os
-import sys
-from datetime import datetime
-import traceback
 import logging
-from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
-import argparse
+import multiprocessing
+import os
 import psutil
+import random
 import threading
 import time
+from datetime import datetime
+from data import get_teacher, get_subject, get_student, get_subject_teacher, get_subject_student
 
-################################################################################
+##############################
 # 1) LOGGING SETUP
-################################################################################
+##############################
 
-def setup_logging(log_queue, log_file):
-    """
-    Configures the root logger to send logs to a multiprocessing queue.
-    """
-    queue_handler = QueueHandler(log_queue)
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Adjust as needed (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    logger.addHandler(queue_handler)
-    
-    # Prevent log messages from being propagated to the root logger
-    logger.propagate = False
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(processName)s - %(message)s',
+        handlers=[logging.StreamHandler()]
+    )
+    return logging.getLogger()
 
-def listener_configurer(log_file):
-    """
-    Configures the listener to handle log records from the queue.
-    """
-    root = logging.getLogger()
-    handler = RotatingFileHandler(log_file, maxBytes=10**6, backupCount=5)
-    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(processName)s - %(message)s')
-    handler.setFormatter(formatter)
-    root.addHandler(handler)
+logger = setup_logging()
 
-def listener_process(log_queue, log_file):
-    """
-    The listener process that receives log records from the queue and writes them to the log file.
-    """
-    listener_configurer(log_file)
-    listener = QueueListener(log_queue, *logging.getLogger().handlers)
-    listener.start()
-    try:
-        while True:
-            record = log_queue.get()
-            if record is None:
-                break
-            logger = logging.getLogger(record.name)
-            logger.handle(record)
-    finally:
-        listener.stop()
+##############################
+# 2) MEMORY MONITORING (Optional)
+##############################
 
-def worker_configurer(log_queue):
-    """
-    Configures the worker process to send log records to the queue.
-    
-    Args:
-        log_queue (multiprocessing.Queue): The logging queue.
-    """
-    queue_handler = QueueHandler(log_queue)
-    logger = logging.getLogger()
-    logger.setLevel(logging.INFO)  # Adjust as needed (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    logger.addHandler(queue_handler)
-    logger.propagate = False
+def dump_callback(mem_usage):
+    logger.error(f"Memory usage reached {mem_usage:.2f} GB. Dumping current state not implemented in this example.")
 
-################################################################################
-# 2) MEMORY MONITORING
-################################################################################
-
-def memory_monitor(stop_event, dump_callback, memory_limit_gb, check_interval=5):
-    """
-    Monitors the memory usage of the current process and triggers a callback if the limit is exceeded.
-    
-    Args:
-        stop_event (threading.Event): Event to signal the monitor to stop.
-        dump_callback (callable): Function to call when memory limit is exceeded.
-        memory_limit_gb (float): Memory limit in GB.
-        check_interval (int): Time interval between checks in seconds.
-    """
+def memory_monitor(stop_event, memory_limit_gb=1.0, check_interval=5):
     process = psutil.Process(os.getpid())
     while not stop_event.is_set():
-        mem_usage = process.memory_info().rss / (1024 ** 3)  # Convert to GB
+        mem_usage = process.memory_info().rss / (1024 ** 3)  # in GB
         if mem_usage >= memory_limit_gb:
             dump_callback(mem_usage)
         time.sleep(check_interval)
 
-def dump_callback(mem_usage):
-    """
-    Callback function to handle memory limit exceedance.
-    
-    Args:
-        mem_usage (float): Current memory usage in GB.
-    """
-    logger = logging.getLogger()
-    logger.error(f"Memory usage reached {mem_usage:.2f} GB. Initiating dump and continuing attempts.")
-    
-    # Implement the logic to dump the current timetable or state
-    # For example, save the current timetable to a JSON file
-    # Since 'state' is within worker processes, consider logging and allowing workers to handle their own dumps
-    # Alternatively, implement periodic dumps within the scheduling functions
-    
-    # Example: If you have access to the current state globally, you could do:
-    # with open("partial_timetable.json", "w") as f:
-    #     json.dump(state["timetable"], f, indent=4)
-    
-    # However, accessing 'state' from here is not straightforward. Consider implementing state dumps within worker functions.
-    pass
+##############################
+# 3) DATA LOADING (adapted from your previous algorithm)
+##############################
 
-################################################################################
-# 3) DATA LOADING
-################################################################################
-
-def load_data(logger):
+def load_data():
     try:
-        teachers_raw      = get_teacher()
-        subjects_raw      = get_subject()
-        students_raw      = get_student()
-        sub_teacher_raw   = get_subject_teacher()
-        sub_student_raw   = get_subject_student()
+        teachers_raw    = get_teacher()
+        subjects_raw    = get_subject()
+        students_raw    = get_student()
+        sub_teacher_raw = get_subject_teacher()
+        sub_student_raw = get_subject_student()
 
         # Build teachers dict
         teachers = {}
@@ -145,7 +67,6 @@ def load_data(logger):
                     "tuesday":   bool(t[5]),
                     "wednesday": bool(t[6]),
                     "thursday":  bool(t[7]),
-                    # Friday is removed
                 },
             }
 
@@ -163,419 +84,330 @@ def load_data(logger):
                 "min_hours_per_day": s[6],
             }
 
-        # Build subject->list_of(teacher_id, group_number) from subject_teacher
+        # Build subject_teacher_map: subject_id -> list of (teacher_id, group_number)
         subject_teacher_map = {}
         for row in sub_teacher_raw:
-            # row = (id, subject_id, subject_name, teacher_id, teacher_name, t_mid, t_last, group_number)
             subject_id = row[1]
             teacher_id = row[3]
             group_num  = row[7]
-            if subject_id not in subject_teacher_map:
-                subject_teacher_map[subject_id] = []
-            subject_teacher_map[subject_id].append((teacher_id, group_num))
+            subject_teacher_map.setdefault(subject_id, []).append((teacher_id, group_num))
 
-        # Build subject->set_of_students from JSON array of subject IDs
+        # Build subject_to_students: subject_id -> set(student_ids)
         subject_to_students = {}
         for row in sub_student_raw:
-            # row: (id, json_subject_ids, subject_name, student_id, student_name, etc.)
-            student_id       = row[3]
+            student_id = row[3]
             json_subject_str = row[1]
             try:
-                subj_ids = json.loads(json_subject_str)  # e.g., "[5,16]" -> [5,16]
+                subj_ids = json.loads(json_subject_str)
             except json.JSONDecodeError:
                 subj_ids = []
             for sid in subj_ids:
-                if sid not in subject_to_students:
-                    subject_to_students[sid] = set()
-                subject_to_students[sid].add(student_id)
+                subject_to_students.setdefault(sid, set()).add(student_id)
 
-        data = {
+        logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects.")
+        for subj_id, teacher_list in subject_teacher_map.items():
+            logger.info(f"Subject {subj_id} has {len(teacher_list)} teacher assignment(s).")
+        for subj_id, student_set in subject_to_students.items():
+            logger.info(f"Subject {subj_id} has {len(student_set)} student(s).")
+
+        return {
             "teachers": teachers,
             "subjects": subjects,
             "subject_teacher_map": subject_teacher_map,
-            "subject_to_students": subject_to_students,
+            "subject_to_students": subject_to_students
         }
-
-        # Log the number of loaded entities
-        logger.info(f"Loaded {len(data['teachers'])} teachers.")
-        logger.info(f"Loaded {len(data['subjects'])} subjects.")
-        for subj_id, teachers_info in data["subject_teacher_map"].items():
-            logger.info(f"Subject ID {subj_id} has {len(teachers_info)} teacher assignments.")
-        for subj_id, students in data["subject_to_students"].items():
-            logger.info(f"Subject ID {subj_id} has {len(students)} students.")
-
-        return data
-
     except Exception as e:
         logger.error(f"Error loading data: {e}")
-        traceback.print_exc()
-        sys.exit(1)
+        raise
 
-################################################################################
-# 4) TIMETABLE SETUP
-################################################################################
+##############################
+# 4) HELPER FUNCTIONS FOR SCHEDULING
+##############################
 
-DAYS = ["monday", "tuesday", "wednesday", "thursday"]  # Friday removed
+# Days and slots settings
+DAYS = ["monday", "tuesday", "wednesday", "thursday"]
 SLOTS_PER_DAY = 10
 
-def initialize_empty_timetable():
-    # Using fixed-size lists for efficiency
-    timetable = {day: [[] for _ in range(SLOTS_PER_DAY)] for day in DAYS}
-    return timetable
+def get_teacher_available_days(teacher):
+    return [day for day, avail in teacher["available_days"].items() if avail]
 
-################################################################################
-# 5) SPLIT STUDENTS BY TOTAL GROUP_NUMBER
-################################################################################
+def generate_period_distributions(total_periods, available_days, min_periods, max_periods):
+    day_options = []
+    for _ in available_days:
+        options = [0] + list(range(min_periods, max_periods + 1))
+        day_options.append(options)
+    distributions = []
+    for combo in itertools.product(*day_options):
+        if sum(combo) == total_periods:
+            distributions.append(dict(zip(available_days, combo)))
+    return distributions
 
-def split_students_equally(all_students, total_groups, max_per_group):
+def generate_timeslot_options(distribution, slots_per_day=SLOTS_PER_DAY):
+    days_with_class = [day for day, periods in distribution.items() if periods > 0]
+    if not days_with_class:
+        return [{}]
+    possible_starts = []
+    for day in days_with_class:
+        duration = distribution[day]
+        possible_starts.append(list(range(0, slots_per_day - duration + 1)))
+    timeslot_options = []
+    for combo in itertools.product(*possible_starts):
+        assignment = {}
+        for i, day in enumerate(days_with_class):
+            assignment[day] = (combo[i], distribution[day])
+        timeslot_options.append(assignment)
+    return timeslot_options
+
+def partition_students(students_list, total_groups, max_per_group):
     """
-    Partition 'all_students' into 'total_groups' sub-lists,
-    ensuring we don't exceed the subject's capacity in each group if possible.
+    Partition students_list into total_groups groups, ensuring each group does not exceed max_per_group.
+    Returns a list of groups (each a list of student ids) or None if not possible.
     """
-    num_students = len(all_students)
-    if total_groups == 0:
+    num_students = len(students_list)
+    if total_groups <= 0:
         return []
-
-    group_size = ceil(num_students / total_groups)
+    group_size = math.ceil(num_students / total_groups)
     if group_size > max_per_group:
-        # Cannot split without exceeding group capacity
         return None
+    groups = []
+    for i in range(total_groups):
+        groups.append(students_list[i*group_size:(i+1)*group_size])
+    return groups
 
-    subgroups = []
-    student_list = list(all_students)
-    idx = 0
-    for _ in range(total_groups):
-        chunk = student_list[idx : idx + group_size]
-        subgroups.append(chunk)
-        idx += group_size
-    return subgroups
+def simple_partition(lst, n):
+    """Partition lst evenly into n parts (without a max constraint)."""
+    size = math.ceil(len(lst) / n)
+    return [lst[i*size:(i+1)*size] for i in range(n)]
 
-################################################################################
-# 6) CONSTRAINT CHECK (with optimized logging)
-################################################################################
-
-def can_place_in_slot(existing_classes, subject_id, teacher_id, students, day, slot_index, state, logger):
+def candidate_conflict_check(schedule):
     """
-    Check if a class can be placed in the given slot under current constraints.
+    Given a complete schedule (a list of candidate options, each is (teacher_assignment, ts_assignment, student_group)),
+    check that no teacher or student is double-booked.
     """
-    subjects  = state["subjects"]
-    teachers  = state["teachers"]
-    timetable = state["timetable"]
-    subj_info = subjects.get(subject_id)
+    teacher_schedule = {}  # teacher_id -> day -> list of intervals
+    student_schedule = {}  # student_id -> day -> list of intervals
 
-    if subj_info is None:
-        logger.error(f"Subject ID {subject_id} not found in subjects.")
+    for option in schedule:
+        teacher_assignment, ts_assignment, student_group = option
+        teacher_id = teacher_assignment[0]
+        for day, (start, duration) in ts_assignment.items():
+            interval = (start, start + duration)
+            teacher_schedule.setdefault(teacher_id, {}).setdefault(day, []).append(interval)
+            for student in student_group:
+                student_schedule.setdefault(student, {}).setdefault(day, []).append(interval)
+    def overlaps(intervals):
+        intervals_sorted = sorted(intervals, key=lambda x: x[0])
+        for i in range(1, len(intervals_sorted)):
+            if intervals_sorted[i][0] < intervals_sorted[i-1][1]:
+                return True
         return False
+    for tid, days in teacher_schedule.items():
+        for day, ints in days.items():
+            if overlaps(ints):
+                return True
+    for sid, days in student_schedule.items():
+        for day, ints in days.items():
+            if overlaps(ints):
+                return True
+    return False
 
-    # 1) Check subject_max_hours_per_day
-    day_count = sum(1 for cls in timetable[day][slot_index] if cls["subject_id"] == subject_id)
-    logger.debug(f"Checking subject {subject_id} on {day}, slot {slot_index+1}: current count {day_count}, max {subj_info['max_hours_per_day']}.")
-
-    if day_count >= subj_info["max_hours_per_day"]:
-        logger.warning(f"Subject {subject_id} daily limit reached on {day}.")
-        return False
-
-    # 2) Check teacher availability for the day
-    teacher_info = teachers.get(teacher_id)
-    if teacher_info is None:
-        logger.error(f"Teacher ID {teacher_id} not found in teachers.")
-        return False
-
-    if not teacher_info["available_days"].get(day, False):
-        logger.warning(f"Teacher {teacher_id} not available on {day}.")
-        return False
-
-    # 3) Check if teacher is already teaching in this slot
-    if any(cls["teacher_id"] == teacher_id for cls in timetable[day][slot_index]):
-        logger.warning(f"Teacher {teacher_id} is already teaching another subject in slot {slot_index+1} on {day}.")
-        return False
-
-    # 4) Check if students are already in another class in this slot
-    student_conflict = any(set(cls["students"]).intersection(students) for cls in timetable[day][slot_index])
-    if student_conflict:
-        logger.warning(f"Some students are already assigned to another class in slot {slot_index+1} on {day}.")
-        return False
-
-    logger.debug(f"Can place subject {subject_id} with teacher {teacher_id} in slot {slot_index+1} on {day}.")
-    return True
-
-################################################################################
-# 7) SCHEDULE HOURS FOR A SINGLE GROUP (Recursive Backtracking)
-################################################################################
-
-def dump_current_state(state, attempt_number, logger):
+def conflict_between(option, current_schedule):
     """
-    Dumps the current timetable to a JSON file.
-    
-    Args:
-        state (dict): Current state of the timetable.
-        attempt_number (int): The current attempt number for file naming.
-        logger (Logger): Logger instance.
+    Returns True if adding option to current_schedule would create a conflict.
+    (It only checks conflicts for the teacher and students in option.)
     """
-    try:
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        dump_filename = f"partial_timetable_attempt_{attempt_number}_{timestamp}.json"
-        with open(dump_filename, "w") as f:
-            json.dump(state["timetable"], f, indent=4)
-        logger.info(f"Dumped current timetable to {dump_filename}")
-    except Exception as e:
-        logger.error(f"Failed to dump current state: {e}")
+    teacher_assignment, ts_assignment, student_group = option
+    teacher_id = teacher_assignment[0]
+    # Build current intervals for the teacher and for each student in option.
+    current_teacher_intervals = {}
+    current_student_intervals = {}
+    for cand in current_schedule:
+        ta, tsa, grp = cand
+        tid = ta[0]
+        for day, (start, duration) in tsa.items():
+            interval = (start, start + duration)
+            if tid not in current_teacher_intervals:
+                current_teacher_intervals[tid] = {}
+            current_teacher_intervals[tid].setdefault(day, []).append(interval)
+            for student in grp:
+                current_student_intervals.setdefault(student, {}).setdefault(day, []).append(interval)
+    # Check teacher intervals for this option
+    for day, (start, duration) in ts_assignment.items():
+        interval = (start, start + duration)
+        for existing in current_teacher_intervals.get(teacher_id, {}).get(day, []):
+            if interval[0] < existing[1] and existing[0] < interval[1]:
+                return True
+    # Check each student in this option
+    for student in student_group:
+        for day, (start, duration) in ts_assignment.items():
+            interval = (start, start + duration)
+            for existing in current_student_intervals.get(student, {}).get(day, []):
+                if interval[0] < existing[1] and existing[0] < interval[1]:
+                    return True
+    return False
 
-def schedule_hours_for_group(subject_id, teacher_id, students, required_hours, state, best_schedule, logger, max_depth, current_depth, attempt_counter, attempt_lock, attempt_limit, dump_threshold=1000):
+def backtrack(candidate_lists, index, current_schedule):
     """
-    Recursively attempt to place required_hours for a group in the timetable.
-    Update best_schedule if a better schedule is found.
-    
-    Args:
-        subject_id (int): ID of the subject.
-        teacher_id (int): ID of the teacher.
-        students (set): Set of student IDs.
-        required_hours (int): Number of hours to schedule.
-        state (dict): Current state of the timetable.
-        best_schedule (dict): Current best schedule.
-        logger (Logger): Logger instance.
-        max_depth (int or None): Maximum recursion depth, None for no limit.
-        current_depth (int): Current recursion depth.
-        attempt_counter (multiprocessing.Value): Shared attempt counter.
-        attempt_lock (multiprocessing.Lock): Lock to synchronize access to attempt_counter.
-        attempt_limit (int or None): Maximum number of placement attempts, None for no limit.
-        dump_threshold (int): Number of attempts after which to dump state.
+    Recursively select one candidate option from each candidate list (for each teacher assignment)
+    while checking for conflicts incrementally.
+    Returns a complete conflict-free schedule (list of candidate options) or None if none exists.
     """
-    if max_depth is not None and current_depth > max_depth:
-        logger.warning(f"Max recursion depth {max_depth} reached while scheduling subject {subject_id}. Pruning.")
-        return
+    if index == len(candidate_lists):
+        # Finished; check overall conflict (should be conflict-free already)
+        if not candidate_conflict_check(current_schedule):
+            return current_schedule
+        return None
+    for option in candidate_lists[index]:
+        if not conflict_between(option, current_schedule):
+            new_schedule = current_schedule + [option]
+            result = backtrack(candidate_lists, index + 1, new_schedule)
+            if result is not None:
+                return result
+    return None
 
-    if required_hours == 0:
-        # All required hours placed; evaluate and update best_schedule if necessary
-        score = evaluate_schedule(state["timetable"])
-        if best_schedule['score'] is None or score > best_schedule['score']:
-            best_schedule['timetable'] = copy.deepcopy(state["timetable"])
-            best_schedule['score'] = score
-            logger.debug("Found a better schedule.")
-        return
+def evaluate_schedule(schedule, teachers):
+    """Compute a simple score as the sum of idle periods (unused slots) over all teachers."""
+    teacher_usage = {}  # teacher_id -> day -> scheduled periods
+    for option in schedule:
+        teacher_assignment, ts_assignment, _ = option
+        teacher_id = teacher_assignment[0]
+        for day, (start, duration) in ts_assignment.items():
+            teacher_usage.setdefault(teacher_id, {}).setdefault(day, 0)
+            teacher_usage[teacher_id][day] += duration
+    total_idle = 0
+    for tid, teacher in teachers.items():
+        avail_days = get_teacher_available_days(teacher)
+        for day in avail_days:
+            used = teacher_usage.get(tid, {}).get(day, 0)
+            total_idle += (SLOTS_PER_DAY - used)
+    return total_idle
 
-    for d in DAYS:
-        for slot_i in range(SLOTS_PER_DAY):
-            if can_place_in_slot(state["timetable"][d][slot_i], subject_id, teacher_id, set(students), d, slot_i, state, logger):
-                # Check attempt limit
-                if attempt_limit is not None:
-                    with attempt_lock:
-                        if attempt_counter.value >= attempt_limit:
-                            logger.info(f"Attempt limit {attempt_limit} reached. Stopping scheduling.")
-                            return
-                        attempt_counter.value += 1
-                        current_attempt = attempt_counter.value
-                    logger.debug(f"Attempt {current_attempt}: Placing subject {subject_id} (Teacher {teacher_id}) in {d}, slot {slot_i+1}")
-                else:
-                    logger.debug(f"Attempt: Placing subject {subject_id} (Teacher {teacher_id}) in {d}, slot {slot_i+1}")
+##############################
+# 5) MAIN TIMETABLE GENERATION
+##############################
 
-                # Place the class
-                new_class = {
-                    "subject_id": subject_id,
-                    "teacher_id": teacher_id,
-                    "students": list(students),
-                }
-                state["timetable"][d][slot_i].append(new_class)
-                logger.debug(f"Placed subject {subject_id} (Teacher {teacher_id}) in {d}, slot {slot_i+1}")
+def generate_timetable():
+    data = load_data()
+    teachers = data["teachers"]
+    subjects = data["subjects"]
+    subject_teacher_map = data["subject_teacher_map"]
+    subject_to_students = data["subject_to_students"]
 
-                # Periodically dump state
-                if dump_threshold > 0 and attempt_limit is not None and attempt_counter.value % dump_threshold == 0:
-                    dump_current_state(state, attempt_counter.value, logger)
+    candidate_lists = []  # Each element is a list of candidate options for one teacher–group assignment
 
-                # Recurse with one less required hour and incremented depth
-                schedule_hours_for_group(
-                    subject_id,
-                    teacher_id,
-                    students,
-                    required_hours - 1,
-                    state,
-                    best_schedule,
-                    logger,
-                    max_depth,
-                    current_depth +1,
-                    attempt_counter,
-                    attempt_lock,
-                    attempt_limit,
-                    dump_threshold
-                )
-
-                # Remove the class to backtrack
-                state["timetable"][d][slot_i].pop()
-                logger.debug(f"Removed subject {subject_id} (Teacher {teacher_id}) from {d}, slot {slot_i+1}")
-
-################################################################################
-# 8) MAIN SCHEDULING (Brute-Force Backtracking)
-################################################################################
-
-def evaluate_schedule(timetable):
-    """
-    Heuristic: maximize the total number of classes.
-    """
-    total_classes = 0
-    for d in DAYS:
-        for slot in timetable[d]:
-            total_classes += len(slot)
-    return total_classes
-
-def schedule_all_subjects(subjects_list, subjects, subject_teacher_map, subject_to_students, initial_assignments, max_depth, attempt_counter, attempt_lock, attempt_limit):
-    """
-    Generate a valid timetable by placing each class using backtracking.
-    Each process handles a subset of initial_assignments.
-    
-    Args:
-        subjects_list (list): List of (subject_id, subject_info) tuples.
-        subjects (dict): All subjects.
-        subject_teacher_map (dict): Mapping from subject_id to list of (teacher_id, group_num).
-        subject_to_students (dict): Mapping from subject_id to set of student_ids.
-        initial_assignments (list): List of initial class assignments to start with.
-        max_depth (int or None): Maximum recursion depth, None for no limit.
-        attempt_counter (multiprocessing.Value): Shared attempt counter.
-        attempt_lock (multiprocessing.Lock): Lock to synchronize access to attempt_counter.
-        attempt_limit (int or None): Maximum number of placement attempts, None for no limit.
-    
-    Returns:
-        dict: The best timetable found, or None if no valid schedule.
-    """
-    logger = logging.getLogger()
-    logger.info("Starting scheduling process.")
-
-    timetable = initialize_empty_timetable()
-    state = {
-        "timetable": timetable,
-        "teachers": subjects["teachers"],
-        "subjects": subjects["subjects"],
-        "subject_teacher_map": subject_teacher_map,
-        "subject_to_students": subject_to_students,
-    }
-
-    # Apply all initial assignments
-    for assignment in initial_assignments:
-        subject_id = assignment["subject_id"]
-        teacher_id = assignment["teacher_id"]
-        students = set(assignment["students"])
-        required_hours = subjects["subjects"].get(subject_id, {}).get("hours_per_week", 0)
-
-        if required_hours == 0:
-            logger.warning(f"Subject {subject_id} has 0 required hours. Skipping.")
+    # For each subject:
+    for subj_id, teacher_assignments in subject_teacher_map.items():
+        if subj_id not in subject_to_students or len(subject_to_students[subj_id]) == 0:
+            logger.info(f"Skipping subject {subj_id} because no students selected it.")
             continue
 
-        # Attempt to place the initial class
-        placed = False
-        for d in DAYS:
-            for slot_i in range(SLOTS_PER_DAY):
-                if can_place_in_slot(state["timetable"][d][slot_i], subject_id, teacher_id, students, d, slot_i, state, logger):
-                    new_class = {
-                        "subject_id": subject_id,
-                        "teacher_id": teacher_id,
-                        "students": list(students),
-                    }
-                    state["timetable"][d][slot_i].append(new_class)
-                    logger.info(f"Placed initial subject {subject_id} (Teacher {teacher_id}) in {d}, slot {slot_i+1}")
-                    placed = True
-                    break
-            if placed:
-                break
-        if not placed:
-            logger.error(f"Failed to place initial subject {subject_id} (Teacher {teacher_id}).")
-            return None  # Invalid initial assignment
+        # Get all students for the subject (sorted for consistency)
+        all_students = sorted(list(subject_to_students[subj_id]))
+        num_teacher_assignments = len(teacher_assignments)
+        # Evenly partition the subject's students among the teacher assignments.
+        teacher_chunks = simple_partition(all_students, num_teacher_assignments)
 
-        # Schedule remaining hours for this group
-        best_schedule = {'timetable': None, 'score': None}
-        schedule_hours_for_group(
-            subject_id,
-            teacher_id,
-            students,
-            required_hours - 1,
-            state,
-            best_schedule,
-            logger,
-            max_depth,
-            current_depth=1,
-            attempt_counter=attempt_counter,
-            attempt_lock=attempt_lock,
-            attempt_limit=attempt_limit
-        )
+        for i, assignment in enumerate(teacher_assignments):
+            teacher_id, group_num = assignment
+            # Embed subject id into teacher_assignment tuple: (teacher_id, group_num, subj_id)
+            teacher_assignment = (teacher_id, group_num, subj_id)
+            teacher_info = teachers.get(teacher_id)
+            if teacher_info is None:
+                logger.error(f"Teacher {teacher_id} not found for subject {subj_id}.")
+                continue
+            avail_days = get_teacher_available_days(teacher_info)
+            if not avail_days:
+                logger.warning(f"Teacher {teacher_id} is not available on any day. Skipping assignment for subject {subj_id}.")
+                continue
 
-    # Initialize the overall best schedule
-    overall_best_schedule = {'timetable': None, 'score': None}
+            subj_info = subjects[subj_id]
+            total_periods = subj_info["hours_per_week"]
+            min_periods = subj_info["min_hours_per_day"]
+            max_periods = subj_info["max_hours_per_day"]
 
-    # Start backtracking for the remaining subjects
-    def backtrack(subject_index, state, overall_best_schedule, logger, current_depth, max_depth, attempt_counter, attempt_lock, attempt_limit):
-        if max_depth is not None and current_depth > max_depth:
-            logger.warning(f"Max recursion depth {max_depth} reached at subject index {subject_index}. Pruning.")
-            return
+            distributions = generate_period_distributions(total_periods, avail_days, min_periods, max_periods)
+            if not distributions:
+                logger.warning(f"No valid period distributions for subject {subj_id} with teacher {teacher_id}.")
+                continue
 
-        if subject_index >= len(subjects_list):
-            # All subjects have been scheduled; evaluate and update overall_best_schedule
-            score = evaluate_schedule(state["timetable"])
-            if overall_best_schedule['score'] is None or score > overall_best_schedule['score']:
-                overall_best_schedule['timetable'] = copy.deepcopy(state["timetable"])
-                overall_best_schedule['score'] = score
-                logger.info("Found a new best schedule.")
-            return
+            # Get the chunk of students assigned to this teacher assignment.
+            assigned_students = teacher_chunks[i] if i < len(teacher_chunks) else []
+            # Partition these assigned students into the number of groups specified by the teacher assignment.
+            groups = partition_students(assigned_students, group_num, subj_info["max_students_per_group"])
+            if groups is None:
+                logger.error(f"Cannot partition {len(assigned_students)} students into {group_num} groups for subject {subj_id}.")
+                continue
 
-        # Get subject details
-        subj_id, subj_info = subjects_list[subject_index]
-        required_hours     = subj_info["hours_per_week"]
-        max_students_group = subj_info["max_students_per_group"]
-        all_students       = subject_to_students.get(subj_id, set())
-        teacher_rows       = subject_teacher_map.get(subj_id, [])
+            candidate_options = []
+            # For each period distribution and timeslot option, create a candidate option for each group.
+            for dist in distributions:
+                timeslot_opts = generate_timeslot_options(dist, SLOTS_PER_DAY)
+                for ts_assignment in timeslot_opts:
+                    for group in groups:
+                        candidate_options.append((teacher_assignment, ts_assignment, group))
+            # Use the subject's max_students_per_group as the candidate limit.
+            candidate_limit = subj_info["max_students_per_group"]
+            if len(candidate_options) > candidate_limit:
+                candidate_options = random.sample(candidate_options, candidate_limit)
+                logger.info(f"Reduced candidate options for subject {subj_id} with teacher {teacher_id} to {len(candidate_options)} options (limit from subject max_students_per_group).")
+            else:
+                logger.info(f"Generated {len(candidate_options)} options for subject {subj_id} with teacher {teacher_id}.")
+            if candidate_options:
+                candidate_lists.append(candidate_options)
 
-        if not teacher_rows:
-            logger.error(f"Subject {subj_id} has no teacher assignments. Skipping.")
-            backtrack(subject_index + 1, state, overall_best_schedule, logger, current_depth +1, max_depth, attempt_counter, attempt_lock, attempt_limit)
-            return
-        if not all_students:
-            logger.info(f"Subject {subj_id} has no students. Skipping.")
-            backtrack(subject_index + 1, state, overall_best_schedule, logger, current_depth +1, max_depth, attempt_counter, attempt_lock, attempt_limit)
-            return
-
-        total_groups = sum(row[1] for row in teacher_rows)
-        splitted = split_students_equally(all_students, total_groups, max_students_group)
-        if splitted is None:
-            logger.error(f"Cannot split {len(all_students)} students into {total_groups} groups with capacity {max_students_group}. Skipping subject {subj_id}.")
-            backtrack(subject_index + 1, state, overall_best_schedule, logger, current_depth +1, max_depth, attempt_counter, attempt_lock, attempt_limit)
-            return
-
-        logger.info(f"\nScheduling Subject {subj_id}: {len(all_students)} students, {total_groups} groups, {required_hours} hrs/week, max/day={subj_info['max_hours_per_day']}")
-
-        # Assign each group to a teacher
-        for g_index, (teacher_id, group_num) in enumerate(teacher_rows):
-            for g in range(group_num):
-                if g >= len(splitted):
-                    break
-                students = set(splitted[g])
-                # Schedule the required hours for this group
-                best_schedule = {'timetable': None, 'score': None}
-                schedule_hours_for_group(
-                    subj_id,
-                    teacher_id,
-                    students,
-                    required_hours,
-                    state,
-                    best_schedule,
-                    logger,
-                    max_depth,
-                    current_depth +1,
-                    attempt_counter,
-                    attempt_lock,
-                    attempt_limit
-                )
-
-                # Update overall_best_schedule if a better one is found
-                if best_schedule['timetable'] and (overall_best_schedule['score'] is None or best_schedule['score'] > overall_best_schedule['score']):
-                    overall_best_schedule['timetable'] = best_schedule['timetable']
-                    overall_best_schedule['score'] = best_schedule['score']
-                    logger.info("Updated the overall best schedule.")
-
-        # Proceed to next subject
-        backtrack(subject_index + 1, state, overall_best_schedule, logger, current_depth +1, max_depth, attempt_counter, attempt_lock, attempt_limit)
-
-    backtrack(0, state, overall_best_schedule, logger, current_depth=1, max_depth=max_depth, attempt_counter=attempt_counter, attempt_lock=attempt_lock, attempt_limit=attempt_limit)
-
-    if overall_best_schedule['timetable'] is None:
-        logger.error("\n-> FAIL: No valid schedules found under current constraints.")
+    if not candidate_lists:
+        logger.error("No candidate options available for scheduling.")
         return None
 
-    logger.info(f"\n-> SUCCESS: Found the best schedule with score {overall_best_schedule['score']}.")
-    return overall_best_schedule['timetable']
+    # Now, use backtracking to choose one candidate option from each list such that there is no conflict.
+    logger.info("Starting backtracking search for a conflict-free timetable...")
+    solution = backtrack(candidate_lists, 0, [])
+    if solution is None:
+        logger.error("No valid timetable found without conflicts.")
+        return None
+
+    score = evaluate_schedule(solution, teachers)
+    logger.info(f"Found a conflict-free timetable with score {score}.")
+
+    timetable = {}
+    for option in solution:
+        teacher_assignment, ts_assignment, student_group = option
+        teacher_id = teacher_assignment[0]
+        subject_id = teacher_assignment[2]
+        subj_name = subjects.get(subject_id, {}).get("name", "Unknown")
+        for day, (start, duration) in ts_assignment.items():
+            entry = {
+                "subject_id": subject_id,
+                "subject_name": subj_name,
+                "day": day,
+                "start": start,
+                "end": start + duration,
+                "duration": duration,
+                "student_group": student_group
+            }
+            timetable.setdefault(teacher_id, []).append(entry)
+
+    logger.info("Best Timetable:")
+    for tid, classes in timetable.items():
+        teacher = teachers.get(tid, {})
+        teacher_name = teacher.get("name", "Unknown")
+        logger.info(f"\nTeacher {teacher_name} (ID: {tid}):")
+        for cl in classes:
+            logger.info(f"  Subject: {cl['subject_name']} (ID: {cl['subject_id']})")
+            logger.info(f"    Day: {cl['day']}, Periods: {cl['start']} - {cl['end']} (Duration: {cl['duration']} period(s))")
+            logger.info(f"    Student Group: {cl['student_group']}")
+    return timetable
+
+##############################
+# 6) MAIN
+##############################
+
+if __name__ == "__main__":
+    try:
+        final_timetable = generate_timetable()
+        if final_timetable:
+            logger.info("Timetable generation succeeded.")
+        else:
+            logger.error("Timetable generation failed.")
+    except Exception as e:
+        logger.exception(f"An error occurred during timetable generation: {e}")
