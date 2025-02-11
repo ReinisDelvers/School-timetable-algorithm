@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, END
 from tkinter.messagebox import showerror
 import json
+import pandas as pd
 
 from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student
 
@@ -97,7 +98,7 @@ class MainGUI:
                 subject_listbox.insert("end", f"{subject_list[i]}")
 
         def subject_add():
-            name = ent1.get().capitalize()
+            name = ent1.get()
             group_number = ent2.get()
             number_of_hours_per_week = ent3.get()
             max_hours_per_day = ent4.get()
@@ -161,7 +162,7 @@ class MainGUI:
 
         def subject_confirm_edit():
             nonlocal selected_subject_id
-            name = ent1.get().capitalize()
+            name = ent1.get()
             group_number = ent2.get()
             number_of_hours_per_week = ent3.get()
             max_hours_per_day = ent4.get()
@@ -274,9 +275,9 @@ class MainGUI:
                 teacher_listbox.insert("end", f"{teacher_list[i]}")
 
         def teacher_add():
-            name = ent1.get().capitalize()
-            middle_name = ent2.get().capitalize()
-            last_name = ent3.get().capitalize()
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
             monday = checkboxent4.get()
             tuesday = checkboxent5.get()
             wednesday = checkboxent6.get()
@@ -328,9 +329,9 @@ class MainGUI:
 
         def teacher_confirm_edit():
             nonlocal selected_teacher_id
-            name = ent1.get().capitalize()
-            middle_name = ent2.get().capitalize()
-            last_name = ent3.get().capitalize()
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
             monday = checkboxent4.get()
             tuesday = checkboxent5.get()
             wednesday = checkboxent6.get()
@@ -441,9 +442,9 @@ class MainGUI:
                 student_listbox.insert("end", f"{student_list[i]}")
 
         def student_add():
-            name = ent1.get().capitalize()
-            middle_name = ent2.get().capitalize()
-            last_name = ent3.get().capitalize()
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
             if name and last_name:
                 add_student(name, middle_name, last_name)
             else:
@@ -468,7 +469,6 @@ class MainGUI:
         def student_edit():
             nonlocal selected_student_id
             selected = list(student_listbox.curselection())
-            print(selected)
             
             if not selected:
                 showerror("Error", "Select something to edit.")
@@ -488,9 +488,9 @@ class MainGUI:
 
         def student_confirm_edit():
             nonlocal selected_student_id
-            name = ent1.get().capitalize()
-            middle_name = ent2.get().capitalize()
-            last_name = ent3.get().capitalize()
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
             if name and last_name:
                 if selected_student_id != None:
                     update_student(selected_student_id, name, middle_name, last_name)
@@ -810,7 +810,6 @@ class MainGUI:
         def subject_student_edit():
             nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
             temp = get_subject_student()
-            print(temp)
             student_list = get_student()
             selected = list(subject_student_listbox.curselection())
             if not selected:
@@ -866,6 +865,17 @@ class MainGUI:
                 label4.config(text=f"{student_list[selected[0]]}")
             except:
                 return
+            
+        
+        def add_from_ecxel():
+            file_path = ent1.get()
+            excel_file = "Padziļināto kursu izvēle 2024__25_m_g_ (atbildes).xlsx"
+            file = pd.read_excel(excel_file)
+
+            csv_file = "Padziļināto kursu izvēle 2024__25_m_g_ (atbildes).csv"
+            file.to_csv(csv_file, index=False)
+
+
 
         btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
@@ -879,6 +889,12 @@ class MainGUI:
         btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=subject_student_confirm_edit)
         btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
 
+        btn5 = tk.Button(frame, text="Add from excel", font=("Arial", 18), command=add_from_ecxel)
+        btn5.grid(row=1, column=3, sticky=tk.W+tk.E, **options)
+
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+
         label1 = tk.Label(frame, text="Subject", font=("Arial", 18))
         label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
 
@@ -890,6 +906,9 @@ class MainGUI:
 
         label4 = tk.Label(frame, text="No student selected", font=("Arial", 18))
         label4.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Excel file path", font=("Arial", 18))
+        label5.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
 
         subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
         subject_listbox.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
