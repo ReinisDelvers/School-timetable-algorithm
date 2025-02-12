@@ -2,7 +2,7 @@
 """
 Algorithm.py
 Version: 3.3
-Revision: 7
+Revision: 11
 
 Full CP Model with Output Dumping and Enhanced Mathematical Feasibility Check:
   - Builds a complete CP model for school timetabling that models:
@@ -17,18 +17,18 @@ Full CP Model with Output Dumping and Enhanced Mathematical Feasibility Check:
   - The conflict graph check uses both a maximum-total-hours clique, a greedy coloring estimate, and a block-based estimate to decide if a zero-conflict timetable is mathematically possible.
   - After solving, the code constructs teacher, main, and student schedules and writes them to a text file.
   - If the CP solver’s time limit is reached without a zero-slack solution, it returns the best solution found.
-  - Data is loaded via load_data(), and helper functions (like get_teacher_available_days()) are defined.
+  - Data is loaded via load_data(), and helper functions (like get_teacher_available_days(), generate_period_distributions(), and simple_partition()) are defined.
 """
 
 ##############################
 # GLOBAL PARAMETERS
-# Version: 3.3 / Revision: 7
+# Version: 3.3 / Revision: 11
 ##############################
 PERIODS_PER_DAY = 10
 DAYS = ["monday", "tuesday", "wednesday", "thursday"]
 TOTAL_WEEK_PERIODS = len(DAYS) * PERIODS_PER_DAY
 
-CP_MAX_RUN_TIME = 3         # seconds if zero-conflict is mathematically unlikely.
+CP_MAX_RUN_TIME = 300         # seconds if zero-conflict is mathematically unlikely.
 CP_EXTENDED_RUN_TIME = CP_MAX_RUN_TIME * 10  # extended time if math check indicates zero-conflict is possible.
 
 MAX_ROOMS_PER_TIMESLOT = 20    # Maximum rooms available per global timeslot.
@@ -48,13 +48,13 @@ from datetime import datetime
 from functools import lru_cache, reduce
 from operator import mul
 import shelve
+from concurrent.futures import ProcessPoolExecutor, wait, TimeoutError
 
 # Import OR-Tools CP-SAT
 from ortools.sat.python import cp_model
 
 # Import data functions from data.py
 from data import get_teacher, get_subject, get_student, get_subject_teacher, get_subject_student
-import shelve
 
 ##############################
 # LOGGING SETUP
@@ -75,15 +75,6 @@ logger = setup_logging()
 # Version: 1.0 / Revision: 3
 ##############################
 def load_data():
-    """
-    Loads teacher, subject, student, subject-teacher, and subject-student data.
-    
-    Returns a dictionary with:
-      - "teachers": dict mapping teacher id -> teacher info (including available_days)
-      - "subjects": dict mapping subject id -> subject info (hours per week, etc.)
-      - "subject_teacher_map": dict mapping subject id -> list of (teacher_id, group_number)
-      - "subject_to_students": dict mapping subject id -> set of student ids
-    """
     try:
         teachers_raw = get_teacher()
         subjects_raw = get_subject()
@@ -154,8 +145,8 @@ def load_data():
         raise
 
 ##############################
-# UTILITY FUNCTIONS: Timeslot Mapping, Domain, and Teacher Available Days
-# Version: 1.0 / Revision: 2
+# HELPER FUNCTIONS FOR SCHEDULING
+# Version: 1.0 / Revision: 3
 ##############################
 def timeslot_to_day_period(ts):
     """Convert a global timeslot (0 .. TOTAL_WEEK_PERIODS-1) to (day, period)."""
@@ -175,13 +166,52 @@ def available_timeslot_domain(teacher):
 def get_teacher_available_days(teacher):
     """
     Return a list of days (as strings) on which the teacher is available.
-    For example, if teacher["available_days"] is {"monday": True, "tuesday": False, ...},
-    this function returns the list of days with True.
     """
     return [day for day, available in teacher.get("available_days", {}).items() if available]
 
+# --- Added Function: simple_partition ---
+def simple_partition(lst, n):
+    """
+    Evenly partition list lst into n parts.
+    Returns a list of n sublists. Some parts may be empty if lst is small.
+    """
+    size = math.ceil(len(lst) / n)
+    return [lst[i*size:(i+1)*size] for i in range(n)]
+
+# --- Added Function: generate_period_distributions ---
+def generate_period_distributions(total_periods, available_days, min_periods, max_periods):
+    """
+    Generate all distributions of total_periods among available_days that respect the min and max periods constraints.
+    If total_periods is odd and min_periods > 1, one day may get 1 period (special handling) and the others follow the min-max range.
+    """
+    distributions = []
+    # Special handling for odd total_periods with min_periods > 1
+    if total_periods % 2 == 1 and min_periods > 1:
+        for special_day in available_days:
+            day_options = []
+            for day in available_days:
+                if day == special_day:
+                    options = [0, 1] + list(range(min_periods, max_periods + 1))
+                    options = sorted(set(options))
+                else:
+                    options = [0] + list(range(min_periods, max_periods + 1))
+                day_options.append(options)
+            for combo in itertools.product(*day_options):
+                if sum(combo) == total_periods:
+                    distributions.append(dict(zip(available_days, combo)))
+    # General case
+    day_options = []
+    for _ in available_days:
+        day_options.append([0] + list(range(min_periods, max_periods + 1)))
+    for combo in itertools.product(*day_options):
+        if sum(combo) == total_periods:
+            distributions.append(dict(zip(available_days, combo)))
+    if not distributions:
+        logger.warning(f"generate_period_distributions: No valid distributions for total_periods={total_periods}, available_days={available_days}, min={min_periods}, max={max_periods}.")
+    return distributions
+
 ##############################
-# DYNAMIC CANDIDATE LIMIT FUNCTION
+# DYNAMIC CANDIDATE LIMIT FUNCTION (Already Defined)
 # Version: 1.0 / Revision: 2
 ##############################
 def get_dynamic_max_candidate_options():
@@ -196,8 +226,8 @@ def get_dynamic_max_candidate_options():
         return int(100 + scale * (1000 - 100))
 
 ##############################
-# CONFLICT GRAPH & MAX CLIQUE (Mathematical Feasibility)
-# Version: 1.0 / Revision: 1
+# CONFLICT GRAPH & MAX CLIQUE & BLOCK-BASED CHECKS
+# Version: 3.3 / Revision: 7
 ##############################
 def build_subject_conflict_graph(data):
     subjects = data["subjects"]
@@ -239,12 +269,7 @@ def bron_kerbosch(R, P, X, graph):
 def compute_max_clique_size(graph):
     return bron_kerbosch(set(), set(graph.keys()), set(), graph)
 
-# --- NEW: Compute Maximum Total Hours in a Clique ---
 def bron_kerbosch_max_total(R, P, X, graph, subjects):
-    """
-    A variant of Bron–Kerbosch that returns the clique (set of subject ids)
-    with the maximum total required hours.
-    """
     current_total = sum(subjects[s]["hours_per_week"] for s in R) if R else 0
     best_R = R.copy()
     best_total = current_total
@@ -265,12 +290,7 @@ def compute_max_total_hours_clique(data):
     clique, total_hours = bron_kerbosch_max_total(set(), set(graph.keys()), set(), graph, subjects)
     return clique, total_hours
 
-# --- NEW: Greedy Coloring for an Alternative Estimate ---
 def greedy_coloring(graph):
-    """
-    A simple greedy coloring algorithm on the conflict graph.
-    Returns a dict mapping subject id -> color (an integer).
-    """
     colors = {}
     for node in sorted(graph, key=lambda x: len(graph[x]), reverse=True):
         assigned = set(colors.get(neighbor) for neighbor in graph[node] if neighbor in colors)
@@ -281,10 +301,6 @@ def greedy_coloring(graph):
     return colors
 
 def estimate_timeslots_needed(data):
-    """
-    Uses greedy coloring on the conflict graph to estimate the number of distinct timeslots required.
-    Also computes the total hours in each color class and estimates the minimum days needed.
-    """
     subjects = data["subjects"]
     graph = build_subject_conflict_graph(data)
     colors = greedy_coloring(graph)
@@ -297,14 +313,7 @@ def estimate_timeslots_needed(data):
     logger.info(f"Greedy Coloring Estimate: {num_colors} colors used; bottleneck total hours = {max_hours} (=> at least {min_days} days required).")
     return num_colors, color_hours, min_days
 
-# --- NEW: Block-Based Conflict Check
 def compute_min_days_for_block_clique(data):
-    """
-    Computes a lower bound on the number of days required based on subject blocks.
-    Each subject requires blocks = hours_per_week//2 + (1 if odd).
-    Using a Bron–Kerbosch variant, finds the clique with maximum total blocks.
-    Blocks per day is defined as (PERIODS_PER_DAY//2) plus one extra if PERIODS_PER_DAY is odd.
-    """
     subjects = data["subjects"]
     graph = build_subject_conflict_graph(data)
     
@@ -351,20 +360,20 @@ def feasibility_check(data):
         total_required = 0
         for subj_id, assignments in subject_teacher_map.items():
             if subj_id not in subjects:
-                logger.error(f"Teacher Capacity: Subject {subj_id} not found.")
+                logger.error(f"Teacher Capacity: Subject {subj_id} referenced but not found.")
                 hard_feasible = False
                 continue
             for teacher_id, _ in assignments:
                 if teacher_id == tid:
                     total_required += subjects[subj_id]["hours_per_week"]
         if total_required > available_slots:
-            logger.error(f"Teacher {tid} ({teachers[tid]['name']}) is overcommitted: {total_required} > {available_slots}.")
+            logger.error(f"Teacher {tid} ({teachers[tid]['name']}) is overcommitted: requires {total_required} hours, only {available_slots} available.")
             hard_feasible = False
 
     # 2. Teacher Assignment Distribution Check
     for subj_id, assignments in subject_teacher_map.items():
         if subj_id not in subjects:
-            logger.error(f"Teacher Assignment: Subject {subj_id} not found.")
+            logger.error(f"Teacher Assignment: Subject {subj_id} referenced but not found.")
             hard_feasible = False
             continue
         subj_info = subjects[subj_id]
@@ -375,14 +384,20 @@ def feasibility_check(data):
                 hard_feasible = False
                 continue
             avail_days = get_teacher_available_days(teacher)
-            if subj_info["hours_per_week"] > 0 and not avail_days:
-                logger.error(f"Teacher {teacher_id} for subject {subj_id} has no available days.")
+            distributions = generate_period_distributions(
+                subj_info["hours_per_week"],
+                avail_days,
+                subj_info["min_hours_per_day"],
+                subj_info["max_hours_per_day"]
+            )
+            if not distributions:
+                logger.error(f"No valid period distributions for subject {subj_id} with teacher {teacher_id} (min: {subj_info['min_hours_per_day']}, max: {subj_info['max_hours_per_day']}, hours: {subj_info['hours_per_week']}, avail: {avail_days}).")
                 hard_feasible = False
 
     # 3. Student Capacity Check
     for subj_id, students in subject_to_students.items():
         if subj_id not in subjects:
-            logger.error(f"Student Capacity: Subject {subj_id} not found.")
+            logger.error(f"Student Capacity: Subject {subj_id} referenced in selections but not found.")
             hard_feasible = False
             continue
         total_students = len(students)
@@ -392,7 +407,7 @@ def feasibility_check(data):
         for _, group_num in assignments:
             total_capacity += group_num * subj_info["max_students_per_group"]
         if total_students > total_capacity:
-            logger.error(f"Subject {subj_id}: capacity {total_capacity} insufficient for {total_students} students.")
+            logger.error(f"Subject {subj_id} requires capacity for {total_students} students, capacity is {total_capacity}.")
             hard_feasible = False
 
     # 4. Student Hours Check
@@ -401,31 +416,40 @@ def feasibility_check(data):
         for s in students:
             student_subjects.setdefault(s, set()).add(subj_id)
     for student, subj_ids in student_subjects.items():
-        total_required = sum(subjects[subj]["hours_per_week"] for subj in subj_ids if subj in subjects)
+        total_required = 0
+        for subj_id in subj_ids:
+            if subj_id in subjects:
+                total_required += subjects[subj_id]["hours_per_week"]
+            else:
+                logger.error(f"Student Hours: Subject {subj_id} for student {student} not found.")
+                hard_feasible = False
         if total_required > TOTAL_WEEK_PERIODS:
-            logger.error(f"Student {student}: requires {total_required} periods, only {TOTAL_WEEK_PERIODS} available.")
+            logger.error(f"Student {student} enrolled in subjects requiring {total_required} periods, only {TOTAL_WEEK_PERIODS} available.")
             hard_feasible = False
 
     # 5. Global Teacher Capacity Check
     global_capacity = sum(len(get_teacher_available_days(t)) * PERIODS_PER_DAY for t in teachers.values())
     total_required_global = sum(s["hours_per_week"] for s in subjects.values())
     if total_required_global > global_capacity:
-        logger.error(f"Global Capacity: {total_required_global} > {global_capacity}.")
+        logger.error(f"Global Capacity: Required {total_required_global} hours exceed total capacity {global_capacity}.")
         hard_feasible = False
 
     # 6. Enhanced Conflict Graph Checks:
-    # (a) Maximum Total Hours Clique
+    graph = build_subject_conflict_graph(data)
+    max_clique_size = compute_max_clique_size(graph)
+    logger.info(f"Conflict Graph: Maximum clique size (lower bound on timeslots required): {max_clique_size}")
+    math_possible = (max_clique_size <= TOTAL_WEEK_PERIODS)
+    
     clique, total_hours_clique = compute_max_total_hours_clique(data)
     min_days_required_clique = math.ceil(total_hours_clique / PERIODS_PER_DAY)
     logger.info(f"Conflict Graph (Clique): Total required hours = {total_hours_clique}, minimum days required = {min_days_required_clique}")
-    # (b) Greedy Coloring Estimate
+    
     num_colors, color_hours, min_days_required_color = estimate_timeslots_needed(data)
-    # (c) Block-Based Estimate
     min_days_required_blocks = compute_min_days_for_block_clique(data)
-    # Combined estimate (maximum of the three estimates)
     min_days_required = max(min_days_required_clique, min_days_required_color, min_days_required_blocks)
     logger.info(f"Combined Estimate: Minimum days required = {min_days_required} (available days: {len(DAYS)})")
-    math_possible = (min_days_required <= len(DAYS))
+    
+    math_possible = math_possible and (min_days_required <= len(DAYS))
     if not math_possible:
         logger.warning(f"Math Check: Zero-conflict timetable mathematically impossible (requires at least {min_days_required} days).")
     else:
@@ -435,261 +459,296 @@ def feasibility_check(data):
 def preliminary_feasibility(data):
     hard_feasible, math_possible = feasibility_check(data)
     if not hard_feasible:
-        logger.error("Preliminary feasibility failed (hard constraints violated).")
+        logger.error("Preliminary feasibility failed: Hard constraints are violated.")
         return False, math_possible
     logger.info("Preliminary feasibility check passed.")
     return True, math_possible
 
 ##############################
-# FULL CP MODEL WITH OBJECTIVE (Including student assignment slack)
-# Version: 3.2 / Revision: 1
-##############################
-def full_cp_model(data):
-    """
-    Build a full CP model that respects all restrictions.
-    For each subject and student, a binary assignment variable and a slack variable are introduced:
-      sum(y) + slack == 1.
-    The model minimizes the total slack (i.e. missing student assignments).
-    """
-    model = cp_model.CpModel()
-    teachers = data["teachers"]
-    subjects = data["subjects"]
-    subject_teacher_map = data["subject_teacher_map"]
-    subject_to_students = data["subject_to_students"]
-
-    # Create classes (one per teacher assignment group) with lesson variables.
-    class_vars = []   # Each element: dict with keys: 'subject_id', 'teacher_id', 'group_index', 'lesson_starts', 'lesson_intervals'
-    class_indices = {}
-    for subj_id, assignments in subject_teacher_map.items():
-        if subj_id not in subjects:
-            logger.error(f"Full CP Model: Subject {subj_id} not found. Skipping.")
-            continue
-        subj_info = subjects[subj_id]
-        hours = subj_info["hours_per_week"]
-        for (teacher_id, group_num) in assignments:
-            for group_index in range(group_num):
-                var_dict = {
-                    'subject_id': subj_id,
-                    'teacher_id': teacher_id,
-                    'group_index': group_index,
-                    'lesson_starts': [],
-                    'lesson_intervals': []
-                }
-                teacher = teachers.get(teacher_id)
-                if teacher is None:
-                    logger.error(f"Full CP Model: Teacher {teacher_id} not found for subject {subj_id}.")
-                    continue
-                domain = available_timeslot_domain(teacher)
-                if not domain:
-                    logger.error(f"Full CP Model: Teacher {teacher_id} has no available timeslots.")
-                    continue
-                for i in range(hours):
-                    start = model.NewIntVarFromDomain(cp_model.Domain.FromValues(domain),
-                                                      f"subj{subj_id}_t{teacher_id}_g{group_index}_l{i}_start")
-                    interval = model.NewIntervalVar(start, 1, start+1,
-                                                    f"subj{subj_id}_t{teacher_id}_g{group_index}_l{i}_interval")
-                    var_dict['lesson_starts'].append(start)
-                    var_dict['lesson_intervals'].append(interval)
-                model.AddAllDifferent(var_dict['lesson_starts'])
-                class_indices[(subj_id, teacher_id, group_index)] = len(class_vars)
-                class_vars.append(var_dict)
-
-    # Teacher NoOverlap: Each teacher's lessons across classes must not overlap.
-    teacher_intervals = {}
-    for c in class_vars:
-        t_id = c['teacher_id']
-        teacher_intervals.setdefault(t_id, []).extend(c['lesson_intervals'])
-    for t_id, intervals in teacher_intervals.items():
-        model.AddNoOverlap(intervals)
-
-    # Room Constraint: Cumulative constraint on all lesson intervals.
-    all_intervals = []
-    for c in class_vars:
-        all_intervals.extend(c['lesson_intervals'])
-    demands = [1] * len(all_intervals)
-    model.AddCumulative(all_intervals, demands, MAX_ROOMS_PER_TIMESLOT)
-
-    # Student Assignment: For each subject and student, add binary variables and a slack variable.
-    student_assignments = {}
-    slack_vars = []
-    for subj_id, students in subject_to_students.items():
-        classes_for_subj = [idx for key, idx in class_indices.items() if key[0] == subj_id]
-        for student in students:
-            y_vars = []
-            for c in classes_for_subj:
-                y = model.NewBoolVar(f"y_s{student}_subj{subj_id}_class{c}")
-                student_assignments[(student, subj_id, c)] = y
-                y_vars.append(y)
-            slack = model.NewIntVar(0, 1, f"slack_s{student}_subj{subj_id}")
-            slack_vars.append(slack)
-            model.Add(sum(y_vars) + slack == 1)
-
-    # Student Non-Overlap: For each student, classes from distinct subjects must not have lessons overlapping.
-    for (student, subj1, c1) in student_assignments:
-        for (student2, subj2, c2) in student_assignments:
-            if student == student2 and subj1 < subj2:
-                b1 = student_assignments[(student, subj1, c1)]
-                b2 = student_assignments[(student, subj2, c2)]
-                for s1 in class_vars[c1]['lesson_starts']:
-                    for s2 in class_vars[c2]['lesson_starts']:
-                        model.Add(s1 != s2).OnlyEnforceIf([b1, b2])
-
-    # Objective: Minimize total slack (i.e. missing student assignments).
-    model.Minimize(sum(slack_vars))
-    return model, class_vars, student_assignments, slack_vars
-
-##############################
-# PROGRESS CALLBACK FOR FULL CP MODEL
-# Version: 1.0 / Revision: 1
-##############################
-class FullCPCallback(cp_model.CpSolverSolutionCallback):
-    def __init__(self, class_vars, slack_vars):
-        cp_model.CpSolverSolutionCallback.__init__(self)
-        self.class_vars = class_vars
-        self.slack_vars = slack_vars
-        self.best_solution = None
-        self.solution_count = 0
-        self.start_time = time.time()
-        self.last_log_time = self.start_time
-
-    def OnSolutionCallback(self):
-        self.solution_count += 1
-        current_time = time.time()
-        elapsed = current_time - self.start_time
-        if current_time - self.last_log_time >= 60 and self.solution_count > 0:
-            avg_time = elapsed / self.solution_count
-            logger.info(f"CP Progress: {self.solution_count} solutions in {int(elapsed)} sec (avg {avg_time:.2f} sec/sol).")
-            self.last_log_time = current_time
-        current_solution = []
-        for c in self.class_vars:
-            starts = [self.Value(var) for var in c['lesson_starts']]
-            current_solution.append((c['subject_id'], c['teacher_id'], c['group_index'], starts))
-        self.best_solution = current_solution
-        total_slack = sum(self.Value(s) for s in self.slack_vars)
-        if total_slack == 0:
-            logger.info("CP Callback: Zero slack achieved. Stopping search.")
-            self.StopSearch()
-
-##############################
-# SOLVE FULL CP MODEL WITH PROGRESS CALLBACK
-# Version: 3.2 / Revision: 1
-##############################
-def solve_full_cp_model(data):
-    model, class_vars, student_assignments, slack_vars = full_cp_model(data)
-    solver = cp_model.CpSolver()
-    solver.parameters.num_search_workers = os.cpu_count()
-    _, math_possible = preliminary_feasibility(data)
-    time_limit = CP_EXTENDED_RUN_TIME if math_possible else CP_MAX_RUN_TIME
-    solver.parameters.max_time_in_seconds = time_limit
-    logger.info(f"Solving full CP model for timetable (time limit: {time_limit} sec, minimizing missing assignments)...")
-    
-    callback = FullCPCallback(class_vars, slack_vars)
-    status = solver.SolveWithSolutionCallback(model, callback)
-    
-    # Use the best solution found by the callback if any solutions were found.
-    if callback.solution_count > 0:
-        best_slack = sum(solver.Value(s) for s in slack_vars)
-        if best_slack == 0:
-            logger.info("Zero slack solution found!")
-        else:
-            logger.info(f"Time limit reached or no zero-slack solution found. Best solution has total missing assignments = {best_slack}.")
-        teacher_schedule = {}
-        for (subj_id, teacher_id, group_index, starts) in callback.best_solution:
-            subj_name = data["subjects"].get(subj_id, {}).get("name", "Unknown")
-            lesson_times = [timeslot_to_day_period(ts) for ts in starts]
-            entry = {"subject_id": subj_id, "subject_name": subj_name,
-                     "lessons": lesson_times, "group": group_index}
-            teacher_schedule.setdefault(teacher_id, []).append(entry)
-        student_schedule = {}
-        for (student, subj_id, c_index), y in student_assignments.items():
-            if solver.Value(y) == 1:
-                c = class_vars[c_index]
-                teacher_id = c['teacher_id']
-                subj_name = data["subjects"].get(subj_id, {}).get("name", "Unknown")
-                lessons = [solver.Value(var) for var in c['lesson_starts']]
-                lesson_times = [timeslot_to_day_period(ts) for ts in lessons]
-                student_schedule.setdefault(student, []).append({
-                    "subject_id": subj_id,
-                    "subject_name": subj_name,
-                    "teacher_id": teacher_id,
-                    "group": c["group_index"],
-                    "lessons": lesson_times
-                })
-        return teacher_schedule, student_schedule
-    else:
-        logger.error("Full CP model: No feasible solution found within time limit.")
-        return None, None
-
-##############################
-# SCHEDULE FORMATTING FUNCTIONS
+# CANDIDATE CLUSTERING FUNCTION
 # Version: 1.0 / Revision: 2
 ##############################
-def format_timetable_full(teacher_schedule, teachers):
+def cluster_candidates(candidate_options):
+    clusters = {}
+    for candidate in candidate_options:
+        teacher_assignment, ts_assignment, student_group = candidate
+        key = (tuple(sorted(ts_assignment.items())), len(student_group))
+        current_score = sum(start for day, (start, _) in ts_assignment.items())
+        if key not in clusters:
+            clusters[key] = (candidate, current_score)
+        else:
+            _, best_score = clusters[key]
+            if current_score < best_score:
+                clusters[key] = (candidate, current_score)
+    return [val[0] for val in clusters.values()]
+
+##############################
+# CONFLICT CHECKING UTILITIES WITH CACHING
+# Version: 1.0 / Revision: 3
+##############################
+def freeze_candidate(candidate):
+    teacher_assignment, ts_assignment, student_group = candidate
+    frozen_ts = tuple(sorted(ts_assignment.items()))
+    frozen_students = tuple(sorted(student_group))
+    return (teacher_assignment, frozen_ts, frozen_students)
+
+@lru_cache(maxsize=100000)
+def _conflict_between_candidates_cached(frozen_c1, frozen_c2):
+    teacher1, ts1, students1 = frozen_c1
+    teacher2, ts2, students2 = frozen_c2
+    if teacher1[0] == teacher2[0]:
+        for day1, (start1, dur1) in ts1:
+            for day2, (start2, dur2) in ts2:
+                if day1 == day2 and (start1 < start2 + dur2 and start2 < start1 + dur1):
+                    return True
+    common_students = set(students1).intersection(set(students2))
+    if common_students:
+        for day1, (start1, dur1) in ts1:
+            for day2, (start2, dur2) in ts2:
+                if day1 == day2 and (start1 < start2 + dur2 and start2 < start1 + dur1):
+                    return True
+    return False
+
+def conflict_between_candidates_cached(c1, c2):
+    frozen_c1 = freeze_candidate(c1)
+    frozen_c2 = freeze_candidate(c2)
+    key = tuple(sorted((frozen_c1, frozen_c2)))
+    return _conflict_between_candidates_cached(*key)
+
+conflict_between_candidates = conflict_between_candidates_cached
+
+##############################
+# CP-SAT PORTFOLIO SOLVER
+# Version: 1.0 / Revision: 3
+##############################
+def cp_solver_instance(candidate_lists, seed, num_instances, cp_max_run_time):
+    from ortools.sat.python import cp_model
+    try:
+        model = cp_model.CpModel()
+        n = len(candidate_lists)
+        x = []
+        for i in range(n):
+            xi = model.NewIntVar(0, len(candidate_lists[i]) - 1, f'x_{i}')
+            x.append(xi)
+        for i in range(n):
+            for j in range(i+1, n):
+                allowed = []
+                for a, cand_i in enumerate(candidate_lists[i]):
+                    for b, cand_j in enumerate(candidate_lists[j]):
+                        try:
+                            if not conflict_between_candidates(cand_i, cand_j):
+                                allowed.append([a, b])
+                        except Exception as e:
+                            logger.error(f"Error in conflict check between lists {i} and {j}: {e}")
+                            return None
+                if not allowed:
+                    logger.error(f"CP-SAT: No allowed combinations between candidate lists {i} and {j}.")
+                    return None
+                model.AddAllowedAssignments([x[i], x[j]], allowed)
+        solver = cp_model.CpSolver()
+        solver.parameters.num_search_workers = num_instances
+        solver.parameters.log_search_progress = False
+        solver.parameters.search_branching = cp_model.PORTFOLIO_SEARCH
+        solver.parameters.max_time_in_seconds = cp_max_run_time
+        solver.parameters.random_seed = seed
+
+        total_candidate_space = reduce(mul, (len(clist) for clist in candidate_lists), 1)
+
+        class BestSolutionCallback(cp_model.CpSolverSolutionCallback):
+            def __init__(self, variables, candidate_lists):
+                cp_model.CpSolverSolutionCallback.__init__(self)
+                self.variables = variables
+                self.candidate_lists = candidate_lists
+                self.best_solution = None
+                self.best_conflicts = float('inf')
+                self.start_time = time.time()
+                self.last_log_time = self.start_time
+                self.solutions_found = 0
+
+            def OnSolutionCallback(self):
+                self.solutions_found += 1
+                current_time = time.time()
+                elapsed = current_time - self.start_time
+                if current_time - self.last_log_time >= 60 and self.solutions_found > 0:
+                    avg_time_per_solution = elapsed / self.solutions_found
+                    remaining = total_candidate_space - self.solutions_found
+                    est_remaining_sec = remaining * avg_time_per_solution
+                    hrs = int(est_remaining_sec // 3600)
+                    mins = int((est_remaining_sec % 3600) // 60)
+                    secs = int(est_remaining_sec % 60)
+                    logger.info(f"CP Progress: {self.solutions_found} candidate solutions checked out of ~{total_candidate_space} "
+                                f"(worst-case). Elapsed: {int(elapsed)} sec. Estimated remaining time: {hrs}h {mins}m {secs}s.")
+                    self.last_log_time = current_time
+                current_solution = [self.Value(v) for v in self.variables]
+                sol = []
+                for i, index in enumerate(current_solution):
+                    sol.append(self.candidate_lists[i][index])
+                conf = total_conflicts(sol)
+                if conf < self.best_conflicts:
+                    self.best_conflicts = conf
+                    self.best_solution = sol
+                if conf == 0:
+                    logger.info("CP-SAT: Zero conflict solution found. Stopping search.")
+                    self.StopSearch()
+
+        best_callback = BestSolutionCallback(x, candidate_lists)
+        status = solver.SolveWithSolutionCallback(model, best_callback)
+        if best_callback.best_solution is not None:
+            return best_callback.best_solution
+        else:
+            return None
+    except Exception as e:
+        logger.error(f"Exception in cp_solver_instance: {e}")
+        return None
+
+def solve_with_cp_portfolio(candidate_lists, num_instances=None, time_limit=CP_MAX_RUN_TIME):
+    try:
+        from ortools.sat.python import cp_model
+    except ImportError:
+        logger.error("CP-SAT: OR-Tools is not installed.")
+        return None
+    if num_instances is None:
+        num_instances = os.cpu_count()
+    seeds = [random.randint(0, 1000000) for _ in range(num_instances)]
+    results = []
+    overall_timeout = time_limit + 5  # seconds
+    with ProcessPoolExecutor(max_workers=num_instances) as executor:
+        futures = [executor.submit(cp_solver_instance, candidate_lists, seed, num_instances, time_limit)
+                   for seed in seeds]
+        done, not_done = wait(futures, timeout=overall_timeout)
+        for future in not_done:
+            future.cancel()
+        for future in done:
+            try:
+                res = future.result(timeout=1)
+                if res is not None:
+                    results.append(res)
+            except Exception as e:
+                logger.error(f"Exception from CP-SAT worker: {e}")
+    if results:
+        best = None
+        best_conflicts = float('inf')
+        for sol in results:
+            conf = total_conflicts(sol)
+            if conf < best_conflicts:
+                best_conflicts = conf
+                best = sol
+            if conf == 0:
+                logger.info("CP-SAT: Found a zero-conflict solution.")
+                return sol
+        logger.info(f"CP-SAT: Best solution found has {best_conflicts} conflicts.")
+        return best
+    logger.error("CP-SAT: No valid solution found within the time limit.")
+    return None
+
+##############################
+# TOTAL CONFLICTS (Helper)
+# Version: 1.0 / Revision: 2
+##############################
+def total_conflicts(assignment):
+    conflicts = 0
+    n = len(assignment)
+    for i in range(n):
+        for j in range(i+1, n):
+            if conflict_between_candidates(assignment[i], assignment[j]):
+                conflicts += 1
+    return conflicts
+
+##############################
+# TOTAL MISSING STUDENTS CALCULATION
+# Version: 1.0 / Revision: 1
+##############################
+def total_missing_students(timetable, subject_to_students):
+    scheduled = {}
+    for teacher_id, classes in timetable.items():
+        for cl in classes:
+            subj_id = cl["subject_id"]
+            scheduled.setdefault(subj_id, set()).update(cl["student_group"])
+    missing = 0
+    for subj_id, picked in subject_to_students.items():
+        missing += len(picked - scheduled.get(subj_id, set()))
+    return missing
+
+##############################
+# TIMETABLE FORMATTING (By Teacher)
+# Version: 1.0 / Revision: 2
+##############################
+def format_timetable(timetable, teachers):
     output_lines = []
-    output_lines.append("Full Teacher Schedule:\n")
-    sorted_teachers = sorted(teacher_schedule.items(), key=lambda item: teachers.get(item[0], {}).get("name", ""))
+    output_lines.append("Best Timetable (Grouped by Teacher):\n")
+    sorted_teachers = sorted(timetable.items(), key=lambda item: teachers.get(item[0], {}).get("name", ""))
+    day_order = {day.lower(): idx for idx, day in enumerate(DAYS)}
     for tid, classes in sorted_teachers:
         teacher = teachers.get(tid, {})
         teacher_name = teacher.get("name", "Unknown")
         output_lines.append(f"Teacher: {teacher_name} (ID: {tid})")
-        for cl in classes:
+        def sort_key(cl):
+            day = cl["day"].lower()
+            day_index = day_order.get(day, 999)
+            return (day_index, cl["start"])
+        sorted_classes = sorted(classes, key=sort_key)
+        for cl in sorted_classes:
             subject_name = cl["subject_name"]
             subject_id = cl["subject_id"]
-            lesson_str = ", ".join([f"{day.capitalize()} P{period}" for day, period in cl["lessons"]])
-            output_lines.append(f"  Subject: {subject_name} (ID: {subject_id}) - Group {cl['group']} | Lessons: {lesson_str}")
+            day = cl["day"].capitalize()
+            start = cl["start"]
+            duration = cl["duration"]
+            student_group = cl["student_group"]
+            student_count = len(student_group) if isinstance(student_group, list) else student_group
+            for period in range(start, start + duration):
+                output_lines.append(f"  Subject: {subject_name} (ID: {subject_id})")
+                output_lines.append(f"    {day}: Period {period}")
+                output_lines.append(f"    Student Group (Total: {student_count}): {student_group}")
         output_lines.append("")
     return "\n".join(output_lines)
 
-def format_student_schedule(student_schedule, teachers):
-    output_lines = []
-    output_lines.append("Student Schedule:\n")
-    for student, classes in sorted(student_schedule.items(), key=lambda x: x[0]):
-        output_lines.append(f"Student {student}:")
-        for cl in classes:
-            subj_name = cl["subject_name"]
-            teacher_id = cl["teacher_id"]
-            teacher_name = teachers.get(teacher_id, {}).get("name", "Unknown")
-            lessons = ", ".join([f"{day.capitalize()} P{period}" for day, period in cl["lessons"]])
-            output_lines.append(f"  Subject: {subj_name}, Teacher: {teacher_name} (ID: {teacher_id}), Group: {cl['group']} | Lessons: {lessons}")
-        output_lines.append("")
-    return "\n".join(output_lines)
-
-def format_main_schedule(teacher_schedule, teachers):
-    main_entries = []
-    for teacher_id, classes in teacher_schedule.items():
-        teacher = teachers.get(teacher_id, {})
+def format_timetable_by_day(timetable, teachers):
+    daily = {day.capitalize(): [] for day in DAYS}
+    for tid, classes in timetable.items():
+        teacher = teachers.get(tid, {})
         teacher_name = teacher.get("name", "Unknown")
         for cl in classes:
-            subj_id = cl["subject_id"]
-            subj_name = cl["subject_name"]
-            for (day, period) in cl["lessons"]:
-                day_index = DAYS.index(day.lower())
-                global_ts = day_index * PERIODS_PER_DAY + period
-                main_entries.append({
-                    "global_ts": global_ts,
-                    "day": day.capitalize(),
-                    "period": period,
-                    "teacher_name": teacher_name,
-                    "teacher_id": teacher_id,
-                    "subject_name": subj_name,
-                    "subject_id": subj_id,
-                    "group": cl["group"]
-                })
-    main_entries = sorted(main_entries, key=lambda e: e["global_ts"])
+            day = cl["day"].capitalize()
+            entry = cl.copy()
+            entry["teacher_name"] = teacher_name
+            entry["teacher_id"] = tid
+            daily.setdefault(day, []).append(entry)
+    for day in daily:
+        expanded = []
+        for entry in daily[day]:
+            start = entry["start"]
+            duration = entry["duration"]
+            for period in range(start, start + duration):
+                new_entry = entry.copy()
+                new_entry["start"] = period
+                new_entry["end"] = period + 1
+                new_entry["duration"] = 1
+                expanded.append(new_entry)
+        daily[day] = sorted(expanded, key=lambda e: e["start"])
     output_lines = []
-    output_lines.append("Main Schedule (Ordered by Timeslot):\n")
-    for entry in main_entries:
-        output_lines.append(f"{entry['day']} Period {entry['period']} - Teacher: {entry['teacher_name']} (ID: {entry['teacher_id']}), Subject: {entry['subject_name']} (ID: {entry['subject_id']}), Group: {entry['group']}")
+    output_lines.append("Daily Timetable:\n")
+    for day in [d.capitalize() for d in DAYS]:
+        output_lines.append(f"{day}:")
+        if daily.get(day):
+            for entry in daily[day]:
+                student_count = len(entry["student_group"]) if isinstance(entry["student_group"], list) else entry["student_group"]
+                output_lines.append(
+                    f"  {entry['teacher_name']} (ID: {entry['teacher_id']}) - {entry['subject_name']} (ID: {entry['subject_id']}): "
+                    f"Period {entry['start']} (Duration: {entry['duration']} period), Students: {student_count}"
+                )
+        else:
+            output_lines.append("  No classes scheduled.")
+        output_lines.append("")
     return "\n".join(output_lines)
 
 def write_output_to_file(teacher_schedule, student_schedule, main_schedule, conflict_report, teachers, filename="timetable_output.txt"):
     with open(filename, "w") as f:
         f.write("=== Teacher Schedule ===\n")
-        f.write(format_timetable_full(teacher_schedule, teachers) + "\n\n")
+        f.write(format_timetable(teacher_schedule, teachers) + "\n\n")
         f.write("=== Main Schedule ===\n")
         f.write(main_schedule + "\n\n")
         f.write("=== Student Schedule ===\n")
-        f.write(format_student_schedule(student_schedule, teachers) + "\n\n")
+        f.write(format_timetable_by_day(teacher_schedule, teachers) + "\n\n")
         f.write("=== Conflict Report ===\n")
         if conflict_report:
             for conflict in conflict_report:
@@ -699,43 +758,133 @@ def write_output_to_file(teacher_schedule, student_schedule, main_schedule, conf
     logger.info(f"Output written to {filename}")
 
 ##############################
-# SIMPLE CONFLICT VALIDATION (for logging)
+# STUDENT COVERAGE VALIDATION
 # Version: 1.0 / Revision: 2
 ##############################
-def validate_student_coverage(teacher_schedule, subject_to_students):
+def validate_student_coverage(timetable, subject_to_students):
     scheduled = {}
-    for teacher_id, classes in teacher_schedule.items():
+    for teacher_id, classes in timetable.items():
         for cl in classes:
             subj_id = cl["subject_id"]
-            scheduled.setdefault(subj_id, set()).update(cl["lessons"])
-    conflicts = []
+            scheduled.setdefault(subj_id, set()).update(cl["student_group"])
+    valid = True
     for subj_id, picked_students in subject_to_students.items():
         if subj_id not in scheduled:
-            conflicts.append(f"Subject {subj_id} has no scheduled classes, but students picked it: {picked_students}")
-    return conflicts
+            logger.error(f"Validation Failure: Subject {subj_id} has no scheduled classes, but students picked it: {picked_students}.")
+            valid = False
+        else:
+            missing = picked_students - scheduled[subj_id]
+            if missing:
+                logger.error(f"Validation Failure: Subject {subj_id} is missing students: {missing}.")
+                valid = False
+    return valid
 
 ##############################
-# MAIN TIMETABLE GENERATION (CP-SAT Full Model)
-# Version: 3.3 / Revision: 1
+# MAIN TIMETABLE GENERATION (CP-SAT Only)
+# Version: 1.0 / Revision: 3
 ##############################
 def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False):
     data = load_data()
     hard_feasible, math_possible = preliminary_feasibility(data)
     if not hard_feasible:
-        logger.error("Preliminary hard feasibility check failed. Aborting timetable generation.")
+        logger.error("Hard feasibility check failed. Aborting timetable generation.")
         return None
-    logger.info("Preliminary feasibility check passed. Proceeding with full CP model.")
-    cp_time_limit = CP_EXTENDED_RUN_TIME if math_possible else CP_MAX_RUN_TIME
-    logger.info(f"Using CP-SAT solver with a time limit of {cp_time_limit} seconds.")
-    teacher_schedule, student_schedule = solve_full_cp_model(data)
-    if teacher_schedule is not None and student_schedule is not None:
-        logger.info("Full CP model timetable generation succeeded.")
-        main_schedule = format_main_schedule(teacher_schedule, data["teachers"])
-        conflicts = validate_student_coverage(teacher_schedule, data["subject_to_students"])
-        write_output_to_file(teacher_schedule, student_schedule, main_schedule, conflicts, data["teachers"])
-        return teacher_schedule, student_schedule, main_schedule, conflicts
+
+    teachers = data["teachers"]
+    subjects = data["subjects"]
+    subject_teacher_map = data["subject_teacher_map"]
+    subject_to_students = data["subject_to_students"]
+
+    candidate_lists = []
+    # --- Candidate Generation Section ---
+    for subj_id, teacher_assignments in subject_teacher_map.items():
+        if subj_id not in subject_to_students or len(subject_to_students[subj_id]) == 0:
+            logger.info(f"Skipping subject {subj_id} because no students selected it.")
+            continue
+        all_students = sorted(list(subject_to_students[subj_id]))
+        subj_info = subjects[subj_id]
+        max_students = subj_info["max_students_per_group"]
+        total_groups_available = sum(group for teacher_id, group in teacher_assignments)
+        required_groups = math.ceil(len(all_students) / max_students)
+        if total_groups_available < required_groups:
+            logger.error(f"Subject {subj_id} requires at least {required_groups} groups to cover {len(all_students)} students, but only {total_groups_available} available.")
+            continue
+        all_partitions = simple_partition(all_students, total_groups_available)
+        current_index = 0
+        for teacher_assignment in teacher_assignments:
+            teacher_id, group_num = teacher_assignment
+            teacher_assignment_full = (teacher_id, group_num, subj_id)
+            assigned_groups = all_partitions[current_index: current_index + group_num]
+            current_index += group_num
+            teacher_info = teachers.get(teacher_id)
+            if teacher_info is None:
+                logger.error(f"Candidate Generation: Teacher {teacher_id} not found for subject {subj_id}.")
+                continue
+            avail_days = get_teacher_available_days(teacher_info)
+            if not avail_days:
+                logger.warning(f"Candidate Generation: Teacher {teacher_id} has no available days; skipping subject {subj_id}.")
+                continue
+            total_periods = subj_info["hours_per_week"]
+            min_periods = subj_info["min_hours_per_day"]
+            max_periods = subj_info["max_hours_per_day"]
+            distributions = generate_period_distributions(total_periods, avail_days, min_periods, max_periods)
+            if not distributions:
+                logger.warning(f"Candidate Generation: No valid period distributions for subject {subj_id} with teacher {teacher_id}.")
+                continue
+            for group in assigned_groups:
+                candidate_options = []
+                for dist in distributions:
+                    timeslot_opts = generate_timeslot_options(dist, PERIODS_PER_DAY)
+                    for ts_assignment in timeslot_opts:
+                        candidate_options.append((teacher_assignment_full, ts_assignment, group))
+                candidate_options = cluster_candidates(candidate_options)
+                candidate_options = sorted(candidate_options,
+                                             key=lambda cand: sum(start for day, (start, _) in cand[1].items()))
+                dynamic_limit = get_dynamic_max_candidate_options()
+                if len(candidate_options) > dynamic_limit:
+                    candidate_options = candidate_options[:dynamic_limit]
+                    logger.info(f"Candidate Generation: Limited candidate options for subject {subj_id} with teacher {teacher_id} to {len(candidate_options)}.")
+                else:
+                    logger.info(f"Candidate Generation: Clustered {len(candidate_options)} options for subject {subj_id} with teacher {teacher_id}.")
+                if candidate_options:
+                    candidate_lists.append(candidate_options)
+    # --- End Candidate Generation Section ---
+    if not candidate_lists:
+        logger.error("Candidate Generation Failure: No candidate options available for scheduling.")
+        return None
+
+    if math_possible:
+        cp_time_limit = CP_EXTENDED_RUN_TIME
+        logger.info("Math check indicates zero-conflict timetable is possible. Running CP-SAT with extended time.")
     else:
-        logger.error("Full CP model timetable generation failed.")
+        cp_time_limit = CP_MAX_RUN_TIME
+        logger.info("Math check indicates zero-conflict timetable is impossible. Running CP-SAT with limited time.")
+
+    logger.info("Using CP-SAT portfolio solver exclusively.")
+    sol = solve_with_cp_portfolio(candidate_lists, time_limit=cp_time_limit)
+    if sol is not None:
+        def convert_to_timetable(solution):
+            timetable = {}
+            for option in solution:
+                teacher_assignment, ts_assignment, student_group = option
+                teacher_id = teacher_assignment[0]
+                subject_id = teacher_assignment[2]
+                subj_name = subjects.get(subject_id, {}).get("name", "Unknown")
+                for day, (start, duration) in ts_assignment.items():
+                    entry = {"subject_id": subject_id, "subject_name": subj_name,
+                             "day": day, "start": start, "end": start + duration,
+                             "duration": duration, "student_group": student_group}
+                    timetable.setdefault(teacher_id, []).append(entry)
+            return timetable
+        temp_timetable = convert_to_timetable(sol)
+        missing = total_missing_students(temp_timetable, subject_to_students)
+        if missing == 0:
+            logger.info("CP-SAT solution found with zero missing students.")
+        else:
+            logger.warning(f"CP-SAT solution found with {missing} missing students.")
+        return temp_timetable
+    else:
+        logger.error("CP-SAT solver failed to produce any solution.")
         return None
 
 ##############################
@@ -743,11 +892,13 @@ def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False):
 ##############################
 if __name__ == "__main__":
     multiprocessing.freeze_support()
+    USE_CP_SOLVER = True
+    USE_ITERATIVE_DEEPENING = False
     try:
-        result = generate_timetable(USE_CP_SOLVER=True, USE_ITERATIVE_DEEPENING=False)
-        if result:
+        final_timetable = generate_timetable(USE_CP_SOLVER, USE_ITERATIVE_DEEPENING)
+        if final_timetable:
             logger.info("Timetable generation succeeded.")
-            data = load_data()  # Reload data to update teacher info.
+            data = load_data()
             teacher_view = format_timetable(final_timetable, data["teachers"])
             daily_view = format_timetable_by_day(final_timetable, data["teachers"])
             logger.info("\n" + teacher_view)
