@@ -54,6 +54,7 @@ from ortools.sat.python import cp_model
 
 # Import data functions from data.py
 from data import get_teacher, get_subject, get_student, get_subject_teacher, get_subject_student
+import shelve
 
 ##############################
 # LOGGING SETUP
@@ -746,6 +747,11 @@ if __name__ == "__main__":
         result = generate_timetable(USE_CP_SOLVER=True, USE_ITERATIVE_DEEPENING=False)
         if result:
             logger.info("Timetable generation succeeded.")
+            data = load_data()  # Reload data to update teacher info.
+            teacher_view = format_timetable(final_timetable, data["teachers"])
+            daily_view = format_timetable_by_day(final_timetable, data["teachers"])
+            logger.info("\n" + teacher_view)
+            logger.info("\n" + daily_view)
         else:
             logger.error("Timetable generation failed.")
     except Exception as e:
