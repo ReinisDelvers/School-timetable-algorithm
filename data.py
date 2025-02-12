@@ -18,6 +18,14 @@ def teacher_table_creator():
         tuesday BOOLEAN NOT NULL DEFAULT 1,
         wednesday BOOLEAN NOT NULL DEFAULT 1,
         thursday BOOLEAN NOT NULL DEFAULT 1
+        monday1 INTEGER NOT NULL DEFAULT 0,
+        tuesday1 INTEGER NOT NULL DEFAULT 0,
+        wednesday1 INTEGER NOT NULL DEFAULT 0,
+        thursday1 INTEGER NOT NULL DEFAULT 0,
+        monday2 INTEGER NOT NULL DEFAULT 0,
+        tuesday2 INTEGER NOT NULL DEFAULT 0,
+        wednesday2 INTEGER NOT NULL DEFAULT 0,
+        thursday2 INTEGER NOT NULL DEFAULT 0;
         )
         """
     )
@@ -36,7 +44,8 @@ def subject_table_creator():
         number_of_hours_per_week INTEGER NOT NULL,
         max_hours_per_day INTEGER NOT NULL,
         max_student_count_per_group INTEGER NOT NULL,
-        min_hours_per_day INTEGER NOT NULL
+        min_hours_per_day INTEGER NOT NULL,
+        parallel_subject_groups INTEGER NOT NULL DEFAULT 0;
         )
         """
     )
@@ -103,20 +112,20 @@ def subject_student_table_creator():
 
 
 # ADD
-def add_teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday):
+def add_teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2):
     cur = conn.cursor()
     cur.execute(
         f"""
-        INSERT INTO teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday) VALUES("{name}", "{middle_name}", "{last_name}", "{monday}", "{tuesday}", "{wednesday}", "{thursday}")
+        INSERT INTO teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2) VALUES("{name}", "{middle_name}", "{last_name}", "{monday}", "{tuesday}", "{wednesday}", "{thursday}", "{monday1}", "{tuesday1}", "{wednesday1}", "{thursday1}", "{monday2}", "{tuesday2}", "{wednesday2}", "{thursday2}")
         """
     )
     conn.commit()
 
-def add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day):
+def add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups):
     cur = conn.cursor()
     cur.execute(
         f"""
-        INSERT INTO subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day) VALUES("{name}", "{group_number}", "{number_of_hours_per_week}", "{max_hours_per_day}", "{max_student_count_per_group}", "{min_hours_per_day}")
+        INSERT INTO subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups) VALUES("{name}", "{group_number}", "{number_of_hours_per_week}", "{max_hours_per_day}", "{max_student_count_per_group}", "{min_hours_per_day}", "{parallel_subject_groups}")
         """
     )
     conn.commit()
@@ -154,7 +163,7 @@ def get_teacher():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT id, name, middle_name, last_name, monday, tuesday, wednesday, thursday FROM teacher
+        SELECT id, name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2 FROM teacher
         ORDER BY last_name ASC
         """
     )
@@ -166,7 +175,7 @@ def get_subject():
     cur = conn.cursor()
     cur.execute(
         f"""
-        SELECT id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day FROM subject
+        SELECT id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups FROM subject
         ORDER BY name ASC
         """
     )
@@ -275,23 +284,23 @@ def remove_subject_student(id):
 
 
 #UPDATE
-def update_teacher(id, name, middle_name, last_name, monday, tuesday, wednesday, thursday):
+def update_teacher(id, name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE teacher
-        SET name = "{name}", middle_name = "{middle_name}", last_name = "{last_name}", monday = "{monday}", tuesday = "{tuesday}", wednesday = "{wednesday}", thursday = "{thursday}"
+        SET name = "{name}", middle_name = "{middle_name}", last_name = "{last_name}", monday = "{monday}", tuesday = "{tuesday}", wednesday = "{wednesday}", thursday = "{thursday}", monday1 = "{monday1}", tuesday1 = "{tuesday1}", wednesday1 = "{wednesday1}", thursday1 = "{thursday1}", monday2 = "{monday2}", tuesday2 = "{tuesday2}", wednesday2 = "{wednesday2}", thursday2 = "{thursday2}"
         WHERE id = {id};
         """
     )
     conn.commit()
 
-def update_subject(id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day):
+def update_subject(id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups):
     cur = conn.cursor()
     cur.execute(
         f"""
         UPDATE subject
-        SET name = "{name}", group_number = "{group_number}", number_of_hours_per_week = "{number_of_hours_per_week}", max_hours_per_day = "{max_hours_per_day}", max_student_count_per_group = "{max_student_count_per_group}", min_hours_per_day = "{min_hours_per_day}"
+        SET name = "{name}", group_number = "{group_number}", number_of_hours_per_week = "{number_of_hours_per_week}", max_hours_per_day = "{max_hours_per_day}", max_student_count_per_group = "{max_student_count_per_group}", min_hours_per_day = "{min_hours_per_day}", parallel_subject_groups = "{parallel_subject_groups}"
         WHERE id = {id};
         """
     )
@@ -329,3 +338,4 @@ def update_subject_student(id, json_subject_ids, student_id):
         """
     )
     conn.commit()
+
