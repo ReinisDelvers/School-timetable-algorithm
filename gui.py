@@ -809,8 +809,8 @@ class MainGUI:
         
         def subject_student_edit():
             nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
-            temp = get_subject_student()
             student_list = get_student()
+            subject_list = get_subject()
             selected = list(subject_student_listbox.curselection())
             if not selected:
                 showerror("Error", "Select subject/student connection to edit.")
@@ -825,7 +825,11 @@ class MainGUI:
             for i in range(len(student_list)):
                 if student_list[i][0] == subject_student_list[selected[0]][3]:
                     label4.config(text=f"{student_list[i]}")
-        
+            
+            for i in selected_subject_ids:
+                for b in range(len(subject_list)):
+                    if i == subject_list[b][0]:
+                        subject_listbox.selection_set(b)
 
 
         def subject_student_confirm_edit():
@@ -869,11 +873,21 @@ class MainGUI:
         
         def add_from_ecxel():
             file_path = ent1.get()
-            excel_file = "Padziļināto kursu izvēle 2024__25_m_g_ (atbildes).xlsx"
-            file = pd.read_excel(excel_file)
-
-            csv_file = "Padziļināto kursu izvēle 2024__25_m_g_ (atbildes).csv"
+            try:
+                file = pd.read_excel(file_path)
+            except:
+                showerror("Error", "Input a valid excel file path")
+                return
+            
+            csv_file = "excel.csv"
             file.to_csv(csv_file, index=False)
+
+            file = pd.read_csv(csv_file)
+            column_names = file.columns.tolist()
+
+            print(column_names)
+
+
 
 
 
@@ -890,7 +904,7 @@ class MainGUI:
         btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
 
         btn5 = tk.Button(frame, text="Add from excel", font=("Arial", 18), command=add_from_ecxel)
-        btn5.grid(row=1, column=3, sticky=tk.W+tk.E, **options)
+        btn5.grid(row=1, column=3, rowspan=2, sticky=tk.W+tk.E, **options)
 
         ent1 = tk.Entry(frame,  font=("Arial", 18))
         ent1.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
@@ -909,6 +923,9 @@ class MainGUI:
 
         label5 = tk.Label(frame, text="Excel file path", font=("Arial", 18))
         label5.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="Takes first excel column as student\nand all other as seperate subjects.", font=("Arial", 18))
+        label6.grid(row=3, column=2, columnspan=2, sticky=tk.W+tk.E+tk.N, **options)
 
         subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
         subject_listbox.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
