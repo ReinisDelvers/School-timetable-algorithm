@@ -4,7 +4,7 @@ from tkinter.messagebox import showerror
 import json
 import pandas as pd
 
-from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student
+from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student, hour_blocker_save, get_hour_blocker
 
 options = {"padx": 5, "pady": 5}
 
@@ -47,6 +47,7 @@ class MainGUI:
         self.frame.columnconfigure(3, weight=1)
         self.frame.columnconfigure(4, weight=1)
         self.frame.columnconfigure(5, weight=1)
+        self.frame.columnconfigure(6, weight=1)
 
         self.btn1 = tk.Button(self.frame, text="Subject", font=("Arial", 18), command=self.subject)
         self.btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
@@ -63,8 +64,11 @@ class MainGUI:
         self.btn5 = tk.Button(self.frame, text="Subject/Student", font=("Arial", 18), command=self.subject_student)
         self.btn5.grid(row=0, column=4, sticky=tk.W+tk.E, **options)
 
-        self.btn6 = tk.Button(self.frame, text="", font=("Arial", 18))
+        self.btn6 = tk.Button(self.frame, text="Hour blocker", font=("Arial", 18), command=self.hour_blocker)
         self.btn6.grid(row=0, column=5, sticky=tk.W+tk.E, **options)
+
+        self.btn7 = tk.Button(self.frame, text="", font=("Arial", 18))
+        self.btn7.grid(row=0, column=6, sticky=tk.W+tk.E, **options)
 
         self.frame.pack(fill="x")
 
@@ -312,7 +316,7 @@ class MainGUI:
             tuesday2 = ent7.get()
             wednesday2 = ent9.get()
             thursday2 = ent11.get()
-            if name and last_name:
+            if name and last_name and monday1 and tuesday1 and wednesday1 and thursday1 and monday2 and tuesday2 and wednesday2 and thursday2:
                 add_teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2)
             else:
                 showerror("Error", "All fields must be filled out except middle name.")
@@ -390,7 +394,7 @@ class MainGUI:
             tuesday2 = ent7.get()
             wednesday2 = ent9.get()
             thursday2 = ent11.get()
-            if name and last_name:
+            if name and last_name and monday1 and tuesday1 and wednesday1 and thursday1 and monday2 and tuesday2 and wednesday2 and thursday2:
                 if selected_teacher_id != None:
                     update_teacher(selected_teacher_id, name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2)
                     selected_teacher_id = None
@@ -1056,10 +1060,10 @@ class MainGUI:
         change_list()
         wind.mainloop()   
 
-    #HOR BLOCKER
-    def subject_student(self):  
+    #HOUR BLOCKER
+    def hour_blocker(self):  
         wind = tk.Toplevel(self.window)  # creates a new window
-        wind.title("Subject/Student")  # window title
+        wind.title("Hour blocker")  # window title
         # wind.resizable(False, False)  # prevents adjusting Width, Height
         wind.geometry("1280x800")  # sets window size
         wind.grab_set()  # prevents interacting with previous window
@@ -1071,162 +1075,309 @@ class MainGUI:
         frame.columnconfigure(1, weight=1)
         frame.columnconfigure(2, weight=1)
         frame.columnconfigure(3, weight=1)
-
-        selected_subject_student_id = None
-        selected_subject_ids = None
-        selected_student_id = None
-        subject_student_list = None
+        frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(5, weight=1)
+        frame.columnconfigure(6, weight=1)
+        frame.columnconfigure(7, weight=1)
+        frame.columnconfigure(8, weight=1)
+        frame.columnconfigure(9, weight=1)
+        frame.columnconfigure(10, weight=1)
 
         def change_list():
-            nonlocal subject_student_list
-            #this
-            subject_student_list = get_subject_student()
-            subject_student_list = [list(item) for item in subject_student_list]
-            subject_list = get_subject()
-            subject_list = [list(item) for item in subject_list]
-            student_list = get_student()
-            
-            subject_ids = []
-            subject_names = []
-            for i in range(len(subject_student_list)):
-                subject_ids.append(json.loads(subject_student_list[i][1]))
-                subject_student_list[i][1] = subject_ids[i]
-            for i in range(len(subject_ids)):
-                for b in range(len(subject_ids[i])):
-                    for c in range(len(subject_list)):
-                        if subject_ids[i][b] == subject_list[c][0]:
-                            subject_names.append(subject_list[c][1])
-                subject_student_list[i][2] = subject_names
-                subject_names = []
-            #to this
-            subject_student_listbox.delete(0, END)
-            subject_listbox.delete(0, END)
-            student_listbox.delete(0, END)
-            for item in subject_student_list:
-                subject_student_listbox.insert("end", f"{item}")
-            for item in subject_list:
-                subject_listbox.insert("end", f"{item}")
-            for item in student_list:
-                student_listbox.insert("end", f"{item}")
+            hour_blocker = get_hour_blocker()
+            checkboxent1.set(hour_blocker[0][0])
+            checkboxent2.set(hour_blocker[0][1])
+            checkboxent3.set(hour_blocker[0][2])
+            checkboxent4.set(hour_blocker[0][3])
+            checkboxent5.set(hour_blocker[0][4])
+            checkboxent6.set(hour_blocker[0][5])
+            checkboxent7.set(hour_blocker[0][6])
+            checkboxent8.set(hour_blocker[0][7])
+            checkboxent9.set(hour_blocker[0][8])
+            checkboxent10.set(hour_blocker[0][9])
+            checkboxent11.set(hour_blocker[0][10])
+            checkboxent12.set(hour_blocker[0][11])
+            checkboxent13.set(hour_blocker[0][12])
+            checkboxent14.set(hour_blocker[0][13])
+            checkboxent15.set(hour_blocker[0][14])
+            checkboxent16.set(hour_blocker[0][15])
+            checkboxent17.set(hour_blocker[0][16])
+            checkboxent18.set(hour_blocker[0][17])
+            checkboxent19.set(hour_blocker[0][18])
+            checkboxent20.set(hour_blocker[0][19])
+            checkboxent21.set(hour_blocker[0][20])
+            checkboxent22.set(hour_blocker[0][21])
+            checkboxent23.set(hour_blocker[0][22])
+            checkboxent24.set(hour_blocker[0][23])
+            checkboxent25.set(hour_blocker[0][24])
+            checkboxent26.set(hour_blocker[0][25])
+            checkboxent27.set(hour_blocker[0][26])
+            checkboxent28.set(hour_blocker[0][27])
+            checkboxent29.set(hour_blocker[0][28])
+            checkboxent30.set(hour_blocker[0][29])
+            checkboxent31.set(hour_blocker[0][30])
+            checkboxent32.set(hour_blocker[0][31])
+            checkboxent33.set(hour_blocker[0][32])
+            checkboxent34.set(hour_blocker[0][33])
+            checkboxent35.set(hour_blocker[0][34])
+            checkboxent36.set(hour_blocker[0][35])
+            checkboxent37.set(hour_blocker[0][36])
+            checkboxent38.set(hour_blocker[0][37])
+            checkboxent39.set(hour_blocker[0][38])
+            checkboxent40.set(hour_blocker[0][39])
 
-        def subject_student_add():
-            nonlocal selected_subject_ids, selected_student_id, subject_student_list
-            for i in range(len(subject_student_list)):
-                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
-                    showerror("Error", "This student already has connections delete previous or edit it.")
-                    return
-            if selected_subject_ids and selected_student_id:
-                json_selected_subject_ids = json.dumps(selected_subject_ids)
-                add_subject_student(json_selected_subject_ids, selected_student_id)
-                change_list()
-            else:
-                showerror("Error", "You need to select subject and student.")
-                return
-            
-        def subject_student_remove():
-            nonlocal subject_student_list
-            selected = list(subject_student_listbox.curselection())
-            if not selected:
-                showerror("Error", "Select something to remove from student/subject connections.")
-                return
-            selected_id = [] 
-            for i in selected:
-                selected_id.append(subject_student_list[i][0])
-            remove_subject_student(selected_id)            
-            change_list()
-
-        
-        def subject_student_edit():
-            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
-            student_list = get_student()
-            subject_list = get_subject()
-            selected = list(subject_student_listbox.curselection())
-            if not selected:
-                showerror("Error", "Select subject/student connection to edit.")
-                return
-            elif len(selected) > 1:
-                showerror("Error", "Select only one to edit.")
-                return
-            selected_subject_student_id = subject_student_list[selected[0]][0]
-            selected_subject_ids = subject_student_list[selected[0]][1]
-            selected_student_id = subject_student_list[selected[0]][3]
-            label3.config(text=f"{subject_student_list[selected[0]][2]}")
-            for i in range(len(student_list)):
-                if student_list[i][0] == subject_student_list[selected[0]][3]:
-                    label4.config(text=f"{student_list[i]}")
-            
-            for i in selected_subject_ids:
-                for b in range(len(subject_list)):
-                    if i == subject_list[b][0]:
-                        subject_listbox.selection_set(b)
-
-
-        def subject_student_confirm_edit():
-            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
-            for i in range(len(subject_student_list)):
-                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
-                    showerror("Error", "This student already has connections delete previous or edit it.")
-                    return
-            if selected_subject_student_id != None:
-                update_subject_student(selected_subject_student_id, selected_subject_ids, selected_student_id)
-                selected_subject_student_id = None
-            else:
-                showerror("Error", "Select something to edit.")
-                return
-            change_list()
+        def hour_blocker_save1():
+            monday1 = checkboxent1.get()
+            monday2 = checkboxent2.get()
+            monday3 = checkboxent3.get()
+            monday4 = checkboxent4.get()
+            monday5 = checkboxent5.get()
+            monday6 = checkboxent6.get()
+            monday7 = checkboxent7.get()
+            monday8 = checkboxent8.get()
+            monday9 = checkboxent9.get()
+            monday10 = checkboxent10.get()
+            tuesday1 = checkboxent11.get()
+            tuesday2 = checkboxent12.get()
+            tuesday3 = checkboxent13.get()
+            tuesday4 = checkboxent14.get()
+            tuesday5 = checkboxent15.get()
+            tuesday6 = checkboxent16.get()
+            tuesday7 = checkboxent17.get()
+            tuesday8 = checkboxent18.get()
+            tuesday9 = checkboxent19.get()
+            tuesday10 = checkboxent20.get()
+            wednesday1 = checkboxent21.get()
+            wednesday2 = checkboxent22.get()
+            wednesday3 = checkboxent23.get()
+            wednesday4 = checkboxent24.get()
+            wednesday5 = checkboxent25.get()
+            wednesday6 = checkboxent26.get()
+            wednesday7 = checkboxent27.get()
+            wednesday8 = checkboxent28.get()
+            wednesday9 = checkboxent29.get()
+            wednesday10 = checkboxent30.get()
+            thursday1 = checkboxent31.get()
+            thursday2 = checkboxent32.get()
+            thursday3 = checkboxent33.get()
+            thursday4 = checkboxent34.get()
+            thursday5 = checkboxent35.get()
+            thursday6 = checkboxent36.get()
+            thursday7 = checkboxent37.get()
+            thursday8 = checkboxent38.get()
+            thursday9 = checkboxent39.get()
+            thursday10 = checkboxent40.get()
+            hour_blocker_save(monday1, monday2, monday3, monday4, monday5, monday6, monday7, monday8, monday9, monday10, tuesday1, tuesday2, tuesday3, tuesday4, tuesday5, tuesday6, tuesday7, tuesday8, tuesday9, tuesday10, wednesday1, wednesday2, wednesday3, wednesday4, wednesday5, wednesday6, wednesday7, wednesday8, wednesday9, wednesday10, thursday1, thursday2, thursday3, thursday4, thursday5, thursday6, thursday7, thursday8, thursday9, thursday10)
 
 
-        def subject_on_selection(useless):
-            nonlocal selected_subject_ids
-            selected = list(subject_listbox.curselection())
-            subject_list = get_subject()
-            selected_ids = []
-            selected_label = []
-            if selected:
-                for i in range(len(selected)):
-                    selected_ids.append(subject_list[selected[i]][0])
-                    selected_label.append(subject_list[selected[i]][1])
-                label3.config(text=f"{selected_label}")
-                selected_subject_ids = selected_ids
-                        
-        def student_on_selection(useless):
-            nonlocal selected_student_id
-            student_list = get_student()
-            selected = list(student_listbox.curselection())
-            try:
-                selected_student_id = student_list[selected[0]][0]
-                label4.config(text=f"{student_list[selected[0]]}")
-            except:
-                return
-            
-        
-        def add_from_ecxel():
-            file_path = ent1.get()
-            try:
-                file = pd.read_excel(file_path)
-            except:
-                showerror("Error", "Input a valid excel file path")
-                return
-            
-            csv_file = "excel.csv"
-            file.to_csv(csv_file, index=False)
-
-            file = pd.read_csv(csv_file)
-            column_names = file.columns.tolist()
-
-            print(column_names)
-
-
-
-
-
-        btn1 = tk.Button(frame, text="Save", font=("Arial", 18), command=hour_blocker_save)
+        btn1 = tk.Button(frame, text="Save", font=("Arial", 18), command=hour_blocker_save1)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
-        label1 = tk.Label(frame, text="Subject", font=("Arial", 18))
-        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
+        label1 = tk.Label(frame, text="Without ✓ means that hour won't be included by alghorithm", font=("Arial", 18))
+        label1.grid(row=0, column=1, columnspan=10, sticky=tk.W+tk.E, **options)
 
+        label2 = tk.Label(frame, text="Monday", font=("Arial", 18))
+        label2.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        label3 = tk.Label(frame, text="Tuesday", font=("Arial", 18))
+        label3.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="Wednesday", font=("Arial", 18))
+        label4.grid(row=4, column=0, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Thursday", font=("Arial", 18))
+        label5.grid(row=5, column=0, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="1", font=("Arial", 18))
+        label6.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
+
+        label7 = tk.Label(frame, text="2", font=("Arial", 18))
+        label7.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label8 = tk.Label(frame, text="3", font=("Arial", 18))
+        label8.grid(row=1, column=3, sticky=tk.W+tk.E, **options)
+
+        label9 = tk.Label(frame, text="4", font=("Arial", 18))
+        label9.grid(row=1, column=4, sticky=tk.W+tk.E, **options)
+
+        label10 = tk.Label(frame, text="5", font=("Arial", 18))
+        label10.grid(row=1, column=5, sticky=tk.W+tk.E, **options)
+
+        label11 = tk.Label(frame, text="6", font=("Arial", 18))
+        label11.grid(row=1, column=6, sticky=tk.W+tk.E, **options)
+
+        label12 = tk.Label(frame, text="7", font=("Arial", 18))
+        label12.grid(row=1, column=7, sticky=tk.W+tk.E, **options)
+
+        label13 = tk.Label(frame, text="8", font=("Arial", 18))
+        label13.grid(row=1, column=8, sticky=tk.W+tk.E, **options)
+
+        label14 = tk.Label(frame, text="9", font=("Arial", 18))
+        label14.grid(row=1, column=9, sticky=tk.W+tk.E, **options)
+
+        label15 = tk.Label(frame, text="10", font=("Arial", 18))
+        label15.grid(row=1, column=10, sticky=tk.W+tk.E, **options)
         
+        checkboxent1 = tk.IntVar(value=1)
+        box1 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
+        box1.grid(row=2, column=1, sticky=tk.W+tk.E)
+
+        checkboxent2 = tk.IntVar(value=1)
+        box2 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent2, offvalue=0, onvalue=1)
+        box2.grid(row=2, column=2, sticky=tk.W+tk.E)
+
+        checkboxent3 = tk.IntVar(value=1)
+        box3 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent3, offvalue=0, onvalue=1)
+        box3.grid(row=2, column=3, sticky=tk.W+tk.E)
+
+        checkboxent4 = tk.IntVar(value=1)
+        box4 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent4, offvalue=0, onvalue=1)
+        box4.grid(row=2, column=4, sticky=tk.W+tk.E)
+
+        checkboxent5 = tk.IntVar(value=1)
+        box5 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent5, offvalue=0, onvalue=1)
+        box5.grid(row=2, column=5, sticky=tk.W+tk.E)
+
+        checkboxent6 = tk.IntVar(value=1)
+        box6 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent6, offvalue=0, onvalue=1)
+        box6.grid(row=2, column=6, sticky=tk.W+tk.E)
+
+        checkboxent7 = tk.IntVar(value=1)
+        box7 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent7, offvalue=0, onvalue=1)
+        box7.grid(row=2, column=7, sticky=tk.W+tk.E)
+
+        checkboxent8 = tk.IntVar(value=1)
+        box8 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent8, offvalue=0, onvalue=1)
+        box8.grid(row=2, column=8, sticky=tk.W+tk.E)
+
+        checkboxent9 = tk.IntVar(value=1)
+        box9 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent9, offvalue=0, onvalue=1)
+        box9.grid(row=2, column=9, sticky=tk.W+tk.E)
+
+        checkboxent10 = tk.IntVar(value=1)
+        box10 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent10, offvalue=0, onvalue=1)
+        box10.grid(row=2, column=10, sticky=tk.W+tk.E)
+
+        checkboxent11 = tk.IntVar(value=1)
+        box11 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent11, offvalue=0, onvalue=1)
+        box11.grid(row=3, column=1, sticky=tk.W+tk.E)
+
+        checkboxent12 = tk.IntVar(value=1)
+        box12 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent12, offvalue=0, onvalue=1)
+        box12.grid(row=3, column=2, sticky=tk.W+tk.E)
+
+        checkboxent13 = tk.IntVar(value=1)
+        box13 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent13, offvalue=0, onvalue=1)
+        box13.grid(row=3, column=3, sticky=tk.W+tk.E)
+
+        checkboxent14 = tk.IntVar(value=1)
+        box14 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent14, offvalue=0, onvalue=1)
+        box14.grid(row=3, column=4, sticky=tk.W+tk.E)
+
+        checkboxent15 = tk.IntVar(value=1)
+        box15 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent15, offvalue=0, onvalue=1)
+        box15.grid(row=3, column=5, sticky=tk.W+tk.E)
+
+        checkboxent16 = tk.IntVar(value=1)
+        box16 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent16, offvalue=0, onvalue=1)
+        box16.grid(row=3, column=6, sticky=tk.W+tk.E)
+
+        checkboxent17 = tk.IntVar(value=1)
+        box17 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent17, offvalue=0, onvalue=1)
+        box17.grid(row=3, column=7, sticky=tk.W+tk.E)
+
+        checkboxent18 = tk.IntVar(value=1)
+        box18 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent18, offvalue=0, onvalue=1)
+        box18.grid(row=3, column=8, sticky=tk.W+tk.E)
+
+        checkboxent19 = tk.IntVar(value=1)
+        box19 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent19, offvalue=0, onvalue=1)
+        box19.grid(row=3, column=9, sticky=tk.W+tk.E)
+
+        checkboxent20 = tk.IntVar(value=1)
+        box20 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent20, offvalue=0, onvalue=1)
+        box20.grid(row=3, column=10, sticky=tk.W+tk.E)
+
+        checkboxent21 = tk.IntVar(value=1)
+        box21 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent21, offvalue=0, onvalue=1)
+        box21.grid(row=4, column=1, sticky=tk.W+tk.E)
+
+        checkboxent22 = tk.IntVar(value=1)
+        box22 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent22, offvalue=0, onvalue=1)
+        box22.grid(row=4, column=2, sticky=tk.W+tk.E)
+
+        checkboxent23 = tk.IntVar(value=1)
+        box23 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent23, offvalue=0, onvalue=1)
+        box23.grid(row=4, column=3, sticky=tk.W+tk.E)
+
+        checkboxent24 = tk.IntVar(value=1)
+        box24 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent24, offvalue=0, onvalue=1)
+        box24.grid(row=4, column=4, sticky=tk.W+tk.E)
+
+        checkboxent25 = tk.IntVar(value=1)
+        box25 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent25, offvalue=0, onvalue=1)
+        box25.grid(row=4, column=5, sticky=tk.W+tk.E)
+
+        checkboxent26 = tk.IntVar(value=1)
+        box26 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent26, offvalue=0, onvalue=1)
+        box26.grid(row=4, column=6, sticky=tk.W+tk.E)
+
+        checkboxent27 = tk.IntVar(value=1)
+        box27 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent27, offvalue=0, onvalue=1)
+        box27.grid(row=4, column=7, sticky=tk.W+tk.E)
+
+        checkboxent28 = tk.IntVar(value=1)
+        box28 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent28, offvalue=0, onvalue=1)
+        box28.grid(row=4, column=8, sticky=tk.W+tk.E)
+
+        checkboxent29 = tk.IntVar(value=1)
+        box29 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent29, offvalue=0, onvalue=1)
+        box29.grid(row=4, column=9, sticky=tk.W+tk.E)
+
+        checkboxent30 = tk.IntVar(value=1)
+        box30 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent30, offvalue=0, onvalue=1)
+        box30.grid(row=4, column=10, sticky=tk.W+tk.E)
+
+        checkboxent31 = tk.IntVar(value=1)
+        box31 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent31, offvalue=0, onvalue=1)
+        box31.grid(row=5, column=1, sticky=tk.W+tk.E)
+
+        checkboxent32 = tk.IntVar(value=1)
+        box32 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent32, offvalue=0, onvalue=1)
+        box32.grid(row=5, column=2, sticky=tk.W+tk.E)
+
+        checkboxent33 = tk.IntVar(value=1)
+        box33 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent33, offvalue=0, onvalue=1)
+        box33.grid(row=5, column=3, sticky=tk.W+tk.E)
+
+        checkboxent34 = tk.IntVar(value=1)
+        box34 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent34, offvalue=0, onvalue=1)
+        box34.grid(row=5, column=4, sticky=tk.W+tk.E)
+
+        checkboxent35 = tk.IntVar(value=1)
+        box35 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent35, offvalue=0, onvalue=1)
+        box35.grid(row=5, column=5, sticky=tk.W+tk.E)
+
+        checkboxent36 = tk.IntVar(value=1)
+        box36 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent36, offvalue=0, onvalue=1)
+        box36.grid(row=5, column=6, sticky=tk.W+tk.E)
+
+        checkboxent37 = tk.IntVar(value=1)
+        box37 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent37, offvalue=0, onvalue=1)
+        box37.grid(row=5, column=7, sticky=tk.W+tk.E)
+
+        checkboxent38 = tk.IntVar(value=1)
+        box38 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent38, offvalue=0, onvalue=1)
+        box38.grid(row=5, column=8, sticky=tk.W+tk.E)
+
+        checkboxent39 = tk.IntVar(value=1)
+        box39 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent39, offvalue=0, onvalue=1)
+        box39.grid(row=5, column=9, sticky=tk.W+tk.E)
+
+        checkboxent40 = tk.IntVar(value=1)
+        box40 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent40, offvalue=0, onvalue=1)
+        box40.grid(row=5, column=10, sticky=tk.W+tk.E)
+
         frame.pack(fill="x") 
 
         change_list()

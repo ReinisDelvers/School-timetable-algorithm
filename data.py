@@ -104,11 +104,64 @@ def subject_student_table_creator():
     conn.commit()
 # subject_student_table_creator()
 
+def hour_blocker_table_creator():
+    cur = conn.cursor()
+    cur.execute(
+        # "DROP TABLE hour_blocker"
+        """
+        CREATE TABLE hour_blocker (
+        monday1 INTEGER NOT NULL DEFAULT 1,
+        monday2 INTEGER NOT NULL DEFAULT 1,
+        monday3 INTEGER NOT NULL DEFAULT 1,
+        monday4 INTEGER NOT NULL DEFAULT 1,
+        monday5 INTEGER NOT NULL DEFAULT 1,
+        monday6 INTEGER NOT NULL DEFAULT 1,
+        monday7 INTEGER NOT NULL DEFAULT 1,
+        monday8 INTEGER NOT NULL DEFAULT 1,
+        monday9 INTEGER NOT NULL DEFAULT 1,
+        monday10 INTEGER NOT NULL DEFAULT 1,
+        tuesday1 INTEGER NOT NULL DEFAULT 1,
+        tuesday2 INTEGER NOT NULL DEFAULT 1,
+        tuesday3 INTEGER NOT NULL DEFAULT 1,
+        tuesday4 INTEGER NOT NULL DEFAULT 1,
+        tuesday5 INTEGER NOT NULL DEFAULT 1,
+        tuesday6 INTEGER NOT NULL DEFAULT 1,
+        tuesday7 INTEGER NOT NULL DEFAULT 1,
+        tuesday8 INTEGER NOT NULL DEFAULT 1,
+        tuesday9 INTEGER NOT NULL DEFAULT 1,
+        tuesday10 INTEGER NOT NULL DEFAULT 1,
+        wednesday1 INTEGER NOT NULL DEFAULT 1,
+        wednesday2 INTEGER NOT NULL DEFAULT 1,
+        wednesday3 INTEGER NOT NULL DEFAULT 1,
+        wednesday4 INTEGER NOT NULL DEFAULT 1,
+        wednesday5 INTEGER NOT NULL DEFAULT 1,
+        wednesday6 INTEGER NOT NULL DEFAULT 1,
+        wednesday7 INTEGER NOT NULL DEFAULT 1,
+        wednesday8 INTEGER NOT NULL DEFAULT 1,
+        wednesday9 INTEGER NOT NULL DEFAULT 1,
+        wednesday10 INTEGER NOT NULL DEFAULT 1,
+        thursday1 INTEGER NOT NULL DEFAULT 1,
+        thursday2 INTEGER NOT NULL DEFAULT 1,
+        thursday3 INTEGER NOT NULL DEFAULT 1,
+        thursday4 INTEGER NOT NULL DEFAULT 1,
+        thursday5 INTEGER NOT NULL DEFAULT 1,
+        thursday6 INTEGER NOT NULL DEFAULT 1,
+        thursday7 INTEGER NOT NULL DEFAULT 1,
+        thursday8 INTEGER NOT NULL DEFAULT 1,
+        thursday9 INTEGER NOT NULL DEFAULT 1,
+        thursday10 INTEGER NOT NULL DEFAULT 1
+        );
+        """
+    )
+    conn.commit()
+# hour_blocker_table_creator()
+
 # teacher_table_creator()
 # subject_table_creator()
 # student_table_creator()
 # subject_teacher_table_creator()
 # subject_student_table_creator()
+# hour_blocker_table_creator()
 
 
 # ADD
@@ -339,3 +392,36 @@ def update_subject_student(id, json_subject_ids, student_id):
     )
     conn.commit()
 
+#HOUR BLOCKER
+def hour_blocker_save(monday1, monday2, monday3, monday4, monday5, monday6, monday7, monday8, monday9, monday10, tuesday1, tuesday2, tuesday3, tuesday4, tuesday5, tuesday6, tuesday7, tuesday8, tuesday9, tuesday10, wednesday1, wednesday2, wednesday3, wednesday4, wednesday5, wednesday6, wednesday7, wednesday8, wednesday9, wednesday10, thursday1, thursday2, thursday3, thursday4, thursday5, thursday6, thursday7, thursday8, thursday9, thursday10):
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        UPDATE hour_blocker
+        SET monday1 = "{monday1}", monday2 = "{monday2}", monday3 = "{monday3}", monday4 = "{monday4}", monday5 = "{monday5}", 
+            monday6 = "{monday6}", monday7 = "{monday7}", monday8 = "{monday8}", monday9 = "{monday9}", monday10 = "{monday10}", 
+            tuesday1 = "{tuesday1}", tuesday2 = "{tuesday2}", tuesday3 = "{tuesday3}", tuesday4 = "{tuesday4}", tuesday5 = "{tuesday5}", 
+            tuesday6 = "{tuesday6}", tuesday7 = "{tuesday7}", tuesday8 = "{tuesday8}", tuesday9 = "{tuesday9}", tuesday10 = "{tuesday10}", 
+            wednesday1 = "{wednesday1}", wednesday2 = "{wednesday2}", wednesday3 = "{wednesday3}", wednesday4 = "{wednesday4}", wednesday5 = "{wednesday5}", 
+            wednesday6 = "{wednesday6}", wednesday7 = "{wednesday7}", wednesday8 = "{wednesday8}", wednesday9 = "{wednesday9}", wednesday10 = "{wednesday10}", 
+            thursday1 = "{thursday1}", thursday2 = "{thursday2}", thursday3 = "{thursday3}", thursday4 = "{thursday4}", thursday5 = "{thursday5}", 
+            thursday6 = "{thursday6}", thursday7 = "{thursday7}", thursday8 = "{thursday8}", thursday9 = "{thursday9}", thursday10 = "{thursday10}"
+        """
+    )
+    conn.commit()
+
+def get_hour_blocker():
+    cur = conn.cursor()
+    cur.execute(
+        f"""
+        SELECT monday1, monday2, monday3, monday4, monday5, monday6, monday7, monday8, monday9, monday10,
+               tuesday1, tuesday2, tuesday3, tuesday4, tuesday5, tuesday6, tuesday7, tuesday8, tuesday9, tuesday10,
+               wednesday1, wednesday2, wednesday3, wednesday4, wednesday5, wednesday6, wednesday7, wednesday8,
+               wednesday9, wednesday10, thursday1, thursday2, thursday3, thursday4, thursday5, thursday6,
+               thursday7, thursday8, thursday9, thursday10
+        FROM hour_blocker
+        """
+    )
+    conn.commit()
+    data = cur.fetchall()
+    return data
