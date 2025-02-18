@@ -1,6 +1,7 @@
 import tkinter as tk
-from tkinter import ttk, END
+from tkinter import ttk, END, messagebox
 from tkinter.messagebox import showerror
+
 import json
 import pandas as pd
 
@@ -1002,7 +1003,81 @@ class MainGUI:
             file = pd.read_csv(csv_file)
             column_names = file.columns.tolist()
 
-            print(column_names)
+
+            student_list = list(get_student())
+            student_list_remade = []
+            for i in range(len(student_list)):
+                if student_list[i][2] == "":
+                    student_temp1 = student_list[i][1].replace(" ", "")
+                    student_temp3 = student_list[i][3].replace(" ", "")                  
+                    student_list_remade.append(f"{student_temp1} {student_temp3}")
+                else:
+                    student_temp1 = student_list[i][1].replace(" ", "")
+                    student_temp2 = student_list[i][2].replace(" ", "")  
+                    student_temp3 = student_list[i][3].replace(" ", "")                  
+                    student_list_remade.append(f"{student_temp1} {student_temp2} {student_temp3}")
+            
+            column_student_names = file[column_names[0]]
+            column_student_names_remade = []
+            
+            for i in range(len(column_student_names)):
+                column_student_names_remade.append(" ".join(column_student_names[i].split()))
+            missing_student_names = []
+
+            for name in column_student_names_remade:
+                if name not in student_list_remade:
+                    missing_student_names.append(name)
+            
+            subject_list = list(get_subject())
+            subject_list_remade = []
+            for i in range(len(subject_list)):
+                subject_list_remade.append(subject_list[i][1])
+            column_subject_names = column_names
+            del column_subject_names[0]
+            missing_subject_names = []
+
+
+            for name in column_subject_names:
+                if name not in subject_list_remade:
+                    missing_subject_names.append(name)
+
+            if len(missing_student_names) != 0 or len(missing_subject_names) != 0:
+                result = messagebox.askyesno("Choose", f"Do you want to add students: {missing_student_names} and subjects: {missing_subject_names} hours will added with some default values please change them and add a eacher for subject.")
+                if result:
+                    if len(missing_student_names) > 0:
+                        for i in range(len(missing_student_names)):
+                            print(missing_student_names)
+                            print(missing_student_names[i])
+                            print(missing_student_names[i].split())
+
+
+                            temp = missing_student_names[i].split()
+                            student_name = ""
+                            middle_name = ""
+                            last_name = ""
+                            if len(temp) == 2:
+                                student_name = temp[0]
+                                last_name = temp[1]
+                            elif len(temp) == 3:
+                                student_name = temp[0]
+                                middle_name = temp[1]
+                                last_name = temp[2]
+                            else:
+                                showerror("Error", f"Can't add {missing_student_names[i]} it has to 2 or 3 words long!")
+                                return
+                            add_student(student_name, middle_name, last_name)
+                    
+                    if len(missing_subject_names) > 0:
+                        print(missing_subject_names)
+                        for i in range(len(missing_subject_names)):
+                            missing_subject_names[i]
+                            add_subject(missing_subject_names[i], 1, 6, 2, 30, 2, 0)
+                    
+                else:
+                    showerror("Error", "Adding from excel was unsuccessful!")
+                    return
+            
+
 
 
 
@@ -1041,7 +1116,7 @@ class MainGUI:
         label5 = tk.Label(frame, text="Excel file path", font=("Arial", 18))
         label5.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
 
-        label6 = tk.Label(frame, text="Takes first excel column as student\nand all other as seperate subjects.", font=("Arial", 18))
+        label6 = tk.Label(frame, text="Takes first excel column as student\nand all other as seperate subjects\nmake sure there are no repeating subjects or students in excel.", font=("Arial", 18))
         label6.grid(row=3, column=2, columnspan=2, sticky=tk.W+tk.E+tk.N, **options)
 
         subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
