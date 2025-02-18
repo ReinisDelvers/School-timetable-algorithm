@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Algorithm.py
-Version: 3.3
-Revision: 11
+Version: 3.4.4
+Revision: 16 Final with Test Mode & Time-Limit
 
 Full CP Model with Output Dumping and Enhanced Mathematical Feasibility Check:
   - Builds a complete CP model for school timetabling that models:
@@ -16,22 +16,34 @@ Full CP Model with Output Dumping and Enhanced Mathematical Feasibility Check:
   - Performs a preliminary feasibility check using teacher, student, and global capacity checks plus an enhanced conflict graph check.
   - The conflict graph check uses both a maximum-total-hours clique, a greedy coloring estimate, and a block-based estimate to decide if a zero-conflict timetable is mathematically possible.
   - After solving, the code constructs teacher, main, and student schedules and writes them to a text file.
-  - If the CP solver’s time limit is reached without a zero-slack solution, it returns the best solution found.
+  - If the CP solver’s time limit is reached without finding a zero-conflict solution, it now returns the best solution found so far.
   - Data is loaded via load_data(), and helper functions (like get_teacher_available_days(), generate_period_distributions(), and simple_partition()) are defined.
+
+V3.4.4 / Revision: 16 Final Changes:
+  - Added test_mode option to reduce the number of students per subject (TEST_MAX_STUDENTS) for faster testing.
+  - Modified the CP-SAT callback (BestSolutionCallback) to enforce a time limit and stop search if exceeded.
+  - Added missing helper function get_teacher_available_timeslots().
+
+(All other previous modifications remain unchanged.)
 """
 
 ##############################
 # GLOBAL PARAMETERS
-# Version: 3.3 / Revision: 11
+# Version: 3.4.3 / Revision: 15
 ##############################
 PERIODS_PER_DAY = 10
 DAYS = ["monday", "tuesday", "wednesday", "thursday"]
 TOTAL_WEEK_PERIODS = len(DAYS) * PERIODS_PER_DAY
 
-CP_MAX_RUN_TIME = 300         # seconds if zero-conflict is mathematically unlikely.
-CP_EXTENDED_RUN_TIME = CP_MAX_RUN_TIME * 10  # extended time if math check indicates zero-conflict is possible.
+# You can set CP_MAX_RUN_TIME to your production time limit.
+CP_MAX_RUN_TIME = 30         # seconds if zero-conflict is mathematically unlikely.
+# Extended run time (when math check indicates possibility) is CP_MAX_RUN_TIME * 10.
+CP_EXTENDED_RUN_TIME = CP_MAX_RUN_TIME * 10  
 
 MAX_ROOMS_PER_TIMESLOT = 20    # Maximum rooms available per global timeslot.
+
+# New constant for testing mode: maximum number of students to consider per subject.
+TEST_MAX_STUDENTS = 10
 
 import itertools
 import math
@@ -72,7 +84,7 @@ logger = setup_logging()
 
 ##############################
 # LOAD_DATA FUNCTION
-# Version: 1.0 / Revision: 3
+# Version: 3.4.2 / Revision: 14
 ##############################
 def load_data():
     try:
@@ -85,6 +97,7 @@ def load_data():
         teachers = {}
         for t in teachers_raw:
             teacher_id = t[0]
+            # Load teacher’s basic info and period-level availability (blocks).
             teachers[teacher_id] = {
                 "id": teacher_id,
                 "name": t[1],
@@ -95,6 +108,12 @@ def load_data():
                     "tuesday": bool(t[5]),
                     "wednesday": bool(t[6]),
                     "thursday": bool(t[7])
+                },
+                "blocks": {
+                    "monday": [int(t[8]), int(t[12])],      # monday1, monday2
+                    "tuesday": [int(t[9]), int(t[13])],       # tuesday1, tuesday2
+                    "wednesday": [int(t[10]), int(t[14])],     # wednesday1, wednesday2
+                    "thursday": [int(t[11]), int(t[15])]       # thursday1, thursday2
                 }
             }
 
@@ -169,11 +188,34 @@ def get_teacher_available_days(teacher):
     """
     return [day for day, available in teacher.get("available_days", {}).items() if available]
 
+# V3.4.2: Modified function to include fallback if period-level blocks are all 0.
+def get_teacher_available_timeslots(teacher):
+    """
+    For each day the teacher is scheduled to work, return a list of period indices (0-indexed)
+    during which the teacher is available. Assumes each day is split into two blocks:
+      - Block 0: periods 0-4
+      - Block 1: periods 5-9
+    If the teacher’s block values are all 0 for a day, then assume full-day availability.
+    """
+    available = {}
+    for day in DAYS:
+        if teacher["available_days"].get(day, False):
+            blocks = teacher.get("blocks", {}).get(day, [0, 0])
+            periods = []
+            if blocks[0]:
+                periods.extend(range(0, 5))
+            if blocks[1]:
+                periods.extend(range(5, 10))
+            if not periods:
+                periods = list(range(0, PERIODS_PER_DAY))
+            available[day] = periods
+    return available
+
 # --- Added Function: simple_partition ---
 def simple_partition(lst, n):
     """
     Evenly partition list lst into n parts.
-    Returns a list of n sublists. Some parts may be empty if lst is small.
+    Returns a list of n sublists.
     """
     size = math.ceil(len(lst) / n)
     return [lst[i*size:(i+1)*size] for i in range(n)]
@@ -182,10 +224,8 @@ def simple_partition(lst, n):
 def generate_period_distributions(total_periods, available_days, min_periods, max_periods):
     """
     Generate all distributions of total_periods among available_days that respect the min and max periods constraints.
-    If total_periods is odd and min_periods > 1, one day may get 1 period (special handling) and the others follow the min-max range.
     """
     distributions = []
-    # Special handling for odd total_periods with min_periods > 1
     if total_periods % 2 == 1 and min_periods > 1:
         for special_day in available_days:
             day_options = []
@@ -199,7 +239,6 @@ def generate_period_distributions(total_periods, available_days, min_periods, ma
             for combo in itertools.product(*day_options):
                 if sum(combo) == total_periods:
                     distributions.append(dict(zip(available_days, combo)))
-    # General case
     day_options = []
     for _ in available_days:
         day_options.append([0] + list(range(min_periods, max_periods + 1)))
@@ -211,7 +250,40 @@ def generate_period_distributions(total_periods, available_days, min_periods, ma
     return distributions
 
 ##############################
-# DYNAMIC CANDIDATE LIMIT FUNCTION (Already Defined)
+# NEW FUNCTION: generate_timeslot_options
+# V3.4.2: Generates timeslot options considering teacher period-level availability.
+##############################
+def generate_timeslot_options(distribution, periods_per_day, teacher_availability):
+    """
+    Generate valid timeslot options given a distribution and teacher availability.
+    Returns a list of dictionaries mapping day to a (start, duration) tuple.
+    """
+    options_per_day = {}
+    for day, required in distribution.items():
+        available_periods = teacher_availability.get(day, [])
+        valid_options = []
+        for start in range(0, periods_per_day - required + 1):
+            if all(p in available_periods for p in range(start, start + required)):
+                valid_options.append((start, required))
+        options_per_day[day] = valid_options
+    all_days = list(distribution.keys())
+    if not all_days:
+        return []
+    combined_options = []
+    for option in options_per_day[all_days[0]]:
+        combined_options.append({all_days[0]: option})
+    for day in all_days[1:]:
+        new_combinations = []
+        for combo in combined_options:
+            for option in options_per_day.get(day, []):
+                new_combo = combo.copy()
+                new_combo[day] = option
+                new_combinations.append(new_combo)
+        combined_options = new_combinations
+    return combined_options
+
+##############################
+# DYNAMIC CANDIDATE LIMIT FUNCTION
 # Version: 1.0 / Revision: 2
 ##############################
 def get_dynamic_max_candidate_options():
@@ -226,7 +298,7 @@ def get_dynamic_max_candidate_options():
         return int(100 + scale * (1000 - 100))
 
 ##############################
-# CONFLICT GRAPH & MAX CLIQUE & BLOCK-BASED CHECKS
+# CONFLICT GRAPH & RELATED FUNCTIONS
 # Version: 3.3 / Revision: 7
 ##############################
 def build_subject_conflict_graph(data):
@@ -555,7 +627,7 @@ def cp_solver_instance(candidate_lists, seed, num_instances, cp_max_run_time):
         total_candidate_space = reduce(mul, (len(clist) for clist in candidate_lists), 1)
 
         class BestSolutionCallback(cp_model.CpSolverSolutionCallback):
-            def __init__(self, variables, candidate_lists):
+            def __init__(self, variables, candidate_lists, time_limit):
                 cp_model.CpSolverSolutionCallback.__init__(self)
                 self.variables = variables
                 self.candidate_lists = candidate_lists
@@ -564,11 +636,16 @@ def cp_solver_instance(candidate_lists, seed, num_instances, cp_max_run_time):
                 self.start_time = time.time()
                 self.last_log_time = self.start_time
                 self.solutions_found = 0
+                self.time_limit = time_limit
 
             def OnSolutionCallback(self):
                 self.solutions_found += 1
                 current_time = time.time()
                 elapsed = current_time - self.start_time
+                # Stop search if elapsed time exceeds the specified time limit.
+                if elapsed >= self.time_limit:
+                    logger.info("Time limit reached in callback. Stopping search.")
+                    self.StopSearch()
                 if current_time - self.last_log_time >= 60 and self.solutions_found > 0:
                     avg_time_per_solution = elapsed / self.solutions_found
                     remaining = total_candidate_space - self.solutions_found
@@ -591,7 +668,7 @@ def cp_solver_instance(candidate_lists, seed, num_instances, cp_max_run_time):
                     logger.info("CP-SAT: Zero conflict solution found. Stopping search.")
                     self.StopSearch()
 
-        best_callback = BestSolutionCallback(x, candidate_lists)
+        best_callback = BestSolutionCallback(x, candidate_lists, cp_max_run_time)
         status = solver.SolveWithSolutionCallback(model, best_callback)
         if best_callback.best_solution is not None:
             return best_callback.best_solution
@@ -676,6 +753,10 @@ def total_missing_students(timetable, subject_to_students):
 def format_timetable(timetable, teachers):
     output_lines = []
     output_lines.append("Best Timetable (Grouped by Teacher):\n")
+    all_teacher_ids = set(teachers.keys())
+    scheduled_teacher_ids = set(timetable.keys())
+    for tid in all_teacher_ids - scheduled_teacher_ids:
+        timetable[tid] = []
     sorted_teachers = sorted(timetable.items(), key=lambda item: teachers.get(item[0], {}).get("name", ""))
     day_order = {day.lower(): idx for idx, day in enumerate(DAYS)}
     for tid, classes in sorted_teachers:
@@ -783,8 +864,16 @@ def validate_student_coverage(timetable, subject_to_students):
 # MAIN TIMETABLE GENERATION (CP-SAT Only)
 # Version: 1.0 / Revision: 3
 ##############################
-def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False):
+def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False, test_mode=False):
     data = load_data()
+
+    # If test_mode is enabled, reduce the student sets for faster testing.
+    if test_mode:
+        for subj_id, students in data["subject_to_students"].items():
+            if len(students) > TEST_MAX_STUDENTS:
+                data["subject_to_students"][subj_id] = set(random.sample(list(students), TEST_MAX_STUDENTS))
+        logger.info(f"Test mode enabled: Reduced student count per subject to at most {TEST_MAX_STUDENTS}.")
+
     hard_feasible, math_possible = preliminary_feasibility(data)
     if not hard_feasible:
         logger.error("Hard feasibility check failed. Aborting timetable generation.")
@@ -820,10 +909,11 @@ def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False):
             if teacher_info is None:
                 logger.error(f"Candidate Generation: Teacher {teacher_id} not found for subject {subj_id}.")
                 continue
-            avail_days = get_teacher_available_days(teacher_info)
-            if not avail_days:
-                logger.warning(f"Candidate Generation: Teacher {teacher_id} has no available days; skipping subject {subj_id}.")
+            teacher_availability = get_teacher_available_timeslots(teacher_info)
+            if not teacher_availability:
+                logger.warning(f"Candidate Generation: Teacher {teacher_id} has no available timeslots; skipping subject {subj_id}.")
                 continue
+            avail_days = list(teacher_availability.keys())
             total_periods = subj_info["hours_per_week"]
             min_periods = subj_info["min_hours_per_day"]
             max_periods = subj_info["max_hours_per_day"]
@@ -834,7 +924,7 @@ def generate_timetable(USE_CP_SOLVER=False, USE_ITERATIVE_DEEPENING=False):
             for group in assigned_groups:
                 candidate_options = []
                 for dist in distributions:
-                    timeslot_opts = generate_timeslot_options(dist, PERIODS_PER_DAY)
+                    timeslot_opts = generate_timeslot_options(dist, PERIODS_PER_DAY, teacher_availability)
                     for ts_assignment in timeslot_opts:
                         candidate_options.append((teacher_assignment_full, ts_assignment, group))
                 candidate_options = cluster_candidates(candidate_options)
@@ -894,8 +984,10 @@ if __name__ == "__main__":
     multiprocessing.freeze_support()
     USE_CP_SOLVER = True
     USE_ITERATIVE_DEEPENING = False
+    # Set test_mode=True for faster testing with reduced student sets.
+    TEST_MODE = True  
     try:
-        final_timetable = generate_timetable(USE_CP_SOLVER, USE_ITERATIVE_DEEPENING)
+        final_timetable = generate_timetable(USE_CP_SOLVER, USE_ITERATIVE_DEEPENING, test_mode=TEST_MODE)
         if final_timetable:
             logger.info("Timetable generation succeeded.")
             data = load_data()
