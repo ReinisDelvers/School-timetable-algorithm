@@ -1040,17 +1040,19 @@ class MainGUI:
             for name in column_subject_names:
                 if name not in subject_list_remade:
                     missing_subject_names.append(name)
+            
+            
+            column_subject_student = []
+            subject_student_list = list(get_subject_student())
+            print(subject_student_list)
+
+
 
             if len(missing_student_names) != 0 or len(missing_subject_names) != 0:
                 result = messagebox.askyesno("Choose", f"Do you want to add students: {missing_student_names} and subjects: {missing_subject_names} hours will added with some default values please change them and add a eacher for subject.")
                 if result:
                     if len(missing_student_names) > 0:
                         for i in range(len(missing_student_names)):
-                            print(missing_student_names)
-                            print(missing_student_names[i])
-                            print(missing_student_names[i].split())
-
-
                             temp = missing_student_names[i].split()
                             student_name = ""
                             middle_name = ""
@@ -1068,7 +1070,6 @@ class MainGUI:
                             add_student(student_name, middle_name, last_name)
                     
                     if len(missing_subject_names) > 0:
-                        print(missing_subject_names)
                         for i in range(len(missing_subject_names)):
                             missing_subject_names[i]
                             add_subject(missing_subject_names[i], 1, 6, 2, 30, 2, 0)
@@ -1076,6 +1077,10 @@ class MainGUI:
                 else:
                     showerror("Error", "Adding from excel was unsuccessful!")
                     return
+            
+
+
+            
             
 
 
