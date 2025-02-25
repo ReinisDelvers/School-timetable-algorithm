@@ -4,6 +4,7 @@ from tkinter.messagebox import showerror
 
 import json
 import pandas as pd
+import math
 
 from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student, hour_blocker_save, get_hour_blocker
 
@@ -1002,54 +1003,56 @@ class MainGUI:
 
             file = pd.read_csv(csv_file)
             column_names = file.columns.tolist()
+            row_list = file.values.tolist()
 
-
-            student_list = list(get_student())
+            column_student_names = file[column_names[0]]
+            column_student_names_remade = []
+            for i in range(len(column_student_names)):
+                column_student_names_remade.append(" ".join(column_student_names[i].split()))
+            student_tuple = list(get_student())
+            student_list = []
+            for i in range(len(student_tuple)):
+                student_list.append(list(student_tuple[i]))
             student_list_remade = []
             for i in range(len(student_list)):
                 if student_list[i][2] == "":
                     student_temp1 = student_list[i][1].replace(" ", "")
-                    student_temp3 = student_list[i][3].replace(" ", "")                  
-                    student_list_remade.append(f"{student_temp1} {student_temp3}")
+                    student_temp3 = student_list[i][3].replace(" ", "")
+                    temp = []
+                    temp.append(student_list[i][0])
+                    temp.append(f"{student_temp1} {student_temp3}")
+                    student_list_remade.append(temp)
                 else:
                     student_temp1 = student_list[i][1].replace(" ", "")
                     student_temp2 = student_list[i][2].replace(" ", "")  
-                    student_temp3 = student_list[i][3].replace(" ", "")                  
-                    student_list_remade.append(f"{student_temp1} {student_temp2} {student_temp3}")
-            
-            column_student_names = file[column_names[0]]
-            column_student_names_remade = []
-            
-            for i in range(len(column_student_names)):
-                column_student_names_remade.append(" ".join(column_student_names[i].split()))
-            missing_student_names = []
+                    student_temp3 = student_list[i][3].replace(" ", "")
+                    temp = []
+                    temp.append(student_list[i][0])
+                    temp.append(f"{student_temp1} {student_temp2} {student_temp3}")        
+                    student_list_remade.append(temp)
 
+            missing_student_names = []
             for name in column_student_names_remade:
-                if name not in student_list_remade:
+                if not any(name == sublist[1] for sublist in student_list_remade):
                     missing_student_names.append(name)
-            
+
             subject_list = list(get_subject())
             subject_list_remade = []
             for i in range(len(subject_list)):
-                subject_list_remade.append(subject_list[i][1])
+                temp = []
+                temp.append(subject_list[i][0])
+                temp.append(subject_list[i][1])
+                subject_list_remade.append(temp)
             column_subject_names = column_names
             del column_subject_names[0]
+
             missing_subject_names = []
-
-
             for name in column_subject_names:
-                if name not in subject_list_remade:
+                if not any(name == sublist[1] for sublist in subject_list_remade):
                     missing_subject_names.append(name)
-            
-            
-            column_subject_student = []
-            subject_student_list = list(get_subject_student())
-            print(subject_student_list)
-
-
-
+          
             if len(missing_student_names) != 0 or len(missing_subject_names) != 0:
-                result = messagebox.askyesno("Choose", f"Do you want to add students: {missing_student_names} and subjects: {missing_subject_names} hours will added with some default values please change them and add a eacher for subject.")
+                result = messagebox.askyesno("Choose", f"Do you want to add students: {missing_student_names} and subjects: {missing_subject_names} hours will added with some default values please change them and add a teacher for subject.")
                 if result:
                     if len(missing_student_names) > 0:
                         for i in range(len(missing_student_names)):
@@ -1078,6 +1081,79 @@ class MainGUI:
                     showerror("Error", "Adding from excel was unsuccessful!")
                     return
             
+
+            column_student_names_remade1 = []
+            for i in range(len(column_student_names)):
+                column_student_names_remade1.append(" ".join(column_student_names[i].split()))
+            student_tuple1 = list(get_student())
+            student_list1 = []
+            for i in range(len(student_tuple1)):
+                student_list1.append(list(student_tuple1[i]))
+            student_list_remade1 = []
+            for i in range(len(student_list1)):
+                if student_list1[i][2] == "":
+                    student_temp11 = student_list1[i][1].replace(" ", "")
+                    student_temp31 = student_list1[i][3].replace(" ", "")
+                    temp1 = []
+                    temp1.append(student_list1[i][0])
+                    temp1.append(f"{student_temp11} {student_temp31}")
+                    student_list_remade1.append(temp1)
+                else:
+                    student_temp11 = student_list1[i][1].replace(" ", "")
+                    student_temp21 = student_list1[i][2].replace(" ", "")  
+                    student_temp31 = student_list1[i][3].replace(" ", "")
+                    temp1 = []
+                    temp1.append(student_list1[i][0])
+                    temp1.append(f"{student_temp11} {student_temp21} {student_temp31}")        
+                    student_list_remade1.append(temp1)
+
+            column_student_id1 = []
+            for i in range(len(column_student_names_remade1)):
+                for b in range(len(student_list_remade1)):
+                    if column_student_names[i] == student_list_remade1[b][1]:
+                        column_student_id1.append(student_list_remade1[b][0])
+                        break
+
+            subject_list1 = list(get_subject())
+            subject_list_remade1 = []
+            for i in range(len(subject_list1)):
+                temp1 = []
+                temp1.append(subject_list1[i][0])
+                temp1.append(subject_list1[i][1])
+                subject_list_remade1.append(temp1)
+
+            column_subject_id1 = []
+            for i in range(len(column_subject_names)):
+                for b in range(len(subject_list_remade1)):
+                    if column_subject_names[i] == subject_list_remade1[b][1]:
+                        column_subject_id1.append(subject_list_remade1[b][0])
+            
+            subject_student_list1 = list(get_subject_student())
+            subject_student_list_remade1 = []
+            for i in range(len(subject_student_list1)):
+                temp1 = []
+                temp1.append(subject_student_list1[i][0])
+                temp1.append(subject_student_list1[i][3])
+                subject_student_list_remade1.append(temp1)
+
+            for i in range(len(column_student_id1)):
+                real_subject_ids1 = []
+                for b in range(1, len(row_list[i])):
+                    if str(row_list[i][b]) != "nan":
+                        real_subject_ids1.append(column_subject_id1[b-1])
+                x=0 
+                for c in range(len(subject_student_list_remade1)):
+                    if subject_student_list_remade1[c][1] == column_student_id1[i]:
+                        update_subject_student(subject_student_list_remade1[c][0], real_subject_ids1, column_student_id1[i])
+                        x=1
+                        print("updated")
+                        break
+                if x == 0:
+                    print("added")
+                    add_subject_student(real_subject_ids1, column_student_id1[i])
+            change_list()
+            
+
 
 
             
@@ -1121,7 +1197,7 @@ class MainGUI:
         label5 = tk.Label(frame, text="Excel file path", font=("Arial", 18))
         label5.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
 
-        label6 = tk.Label(frame, text="Takes first excel column as student\nand all other as seperate subjects\nmake sure there are no repeating subjects or students in excel.", font=("Arial", 18))
+        label6 = tk.Label(frame, text="Takes first excel column as student\nall other as seperate subjects.\nMake sure there are no repeating subjects or students in excel or current data.\nStudent is not learning that subject only if\nthe corresponding subject name excel cell is empty.", font=("Arial", 18))
         label6.grid(row=3, column=2, columnspan=2, sticky=tk.W+tk.E+tk.N, **options)
 
         subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
