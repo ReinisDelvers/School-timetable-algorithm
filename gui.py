@@ -1146,10 +1146,8 @@ class MainGUI:
                     if subject_student_list_remade1[c][1] == column_student_id1[i]:
                         update_subject_student(subject_student_list_remade1[c][0], real_subject_ids1, column_student_id1[i])
                         x=1
-                        print("updated")
                         break
                 if x == 0:
-                    print("added")
                     add_subject_student(real_subject_ids1, column_student_id1[i])
             change_list()
             
