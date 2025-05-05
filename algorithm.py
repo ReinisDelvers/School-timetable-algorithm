@@ -5,12 +5,16 @@ import time
 import threading
 from itertools import groupby
 from functools import lru_cache
+from collections import defaultdict
 from data import (
     get_teacher, get_subject, get_student,
     get_subject_teacher, get_subject_student, get_hour_blocker
 )
 from ortools.sat.python import cp_model
 import statistics
+import multiprocessing as mp
+from multiprocessing import Manager
+import copy
 
 # --- Logging setup ---
 logging.basicConfig(
@@ -145,231 +149,426 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
         subject_teacher_groups.setdefault(sid, []).append((tid, group_count))
 
     sessions = []
-    subject_sessions = {}
     
     for sid, subj in subjects.items():
-        hours_per_week = subj[3]  # hours required per group
-        maxpd = min(subj[4], 2)
-        is_parallel = subjects[sid][7] == 1
-        
+        hours_per_week = subj[3]
+        maxpd = min(subj[4], 2)  # Maximum sessions per day
+        is_parallel = subjects[sid][7] == 1  # Check if subject is parallel
         teacher_groups = subject_teacher_groups.get(sid, [])
         all_students = sorted(list(subj_students.get(sid, set())))
-        total_groups = 1 if is_parallel else sum(gc for _, gc in teacher_groups)
-        students_per_group = math.ceil(len(all_students) / total_groups) if all_students and total_groups else 0
-        
-        total_sessions = hours_per_week * (1 if is_parallel else total_groups)
-        # Single logging point for all subjects
-        logger.info(f"Subject {sid}: {hours_per_week} hours/week, {maxpd} max/day, {total_groups} groups, {len(all_students)} students ({students_per_group} per group) => {total_sessions} total sessions {'(parallel)' if is_parallel else ''}")
-        
+
         if is_parallel:
-            # For parallel subjects, treat all groups as one unit
-            group_teachers = [tid for tid, _ in teacher_groups]
-            students_per_teacher = len(all_students) // len(group_teachers)
-            
-            # Build combined candidate slots from all teachers
-            combined_cand = set()
-            for tid in group_teachers:
-                teacher = teachers.get(tid)
-                if not teacher:
-                    continue
-                for di, day in enumerate(DAYS):
-                    if teacher[4 + di]:
-                        for p in range(PERIODS_PER_DAY):
-                            if hour_blocker[day][p] == 1:
-                                combined_cand.add(di * PERIODS_PER_DAY + p)
-            
-            # Create sessions with student distribution
+            # For parallel subjects, create one session per required hour with all teachers
+            teacher_list = [t[0] for t in teacher_groups]
             for hour in range(hours_per_week):
-                session_groups = []
-                student_start = 0
-                
-                for i, tid in enumerate(group_teachers):
-                    student_end = min(student_start + students_per_teacher, len(all_students))
-                    group_students = all_students[student_start:student_end]
-                    student_start = student_end
-                    
-                    session_id = f"S{sid}_G{i+1}_H{hour}"
-                    session_groups.append({
-                        'id': session_id,
-                        'subject': sid,
-                        'teacher': tid,
-                        'group': i+1,
-                        'students': group_students,
-                        'candidates': list(combined_cand),
-                        'max_per_day': maxpd,
-                        'parallel_with': 0  # All share same base group
-                    })
-                
-                # Add all parallel groups together
-                for sess in session_groups:
-                    sessions.append(sess)
-                    subject_sessions.setdefault(sid, []).append(sess)
+                session = create_session(
+                    sid=sid,
+                    teachers_list=teacher_list,  # All teachers together
+                    hour=hour,
+                    students=all_students,  # All students together
+                    teacher_info=teachers,  # Pass full teachers dict for availability check
+                    maxpd=maxpd,
+                    hour_blocker=hour_blocker,
+                    parallel_group=None  # No parallel group needed since it's one big session
+                )
+                sessions.append(session)
         else:
-            # Handle non-parallel subjects as before
-            total_groups = sum(gc for _, gc in teacher_groups)
-            students_per_group = math.ceil(len(all_students) / total_groups) if all_students and total_groups else 0
-            
-            student_idx = 0
-            group_counter = 0
-            
+            # Handle regular sessions as before
             for tid, group_count in teacher_groups:
-                teacher = teachers.get(tid)
-                if not teacher:
-                    continue
-                    
-                cand = []
-                for di, day in enumerate(DAYS):
-                    if teacher[4 + di]:
-                        for p in range(PERIODS_PER_DAY):
-                            if hour_blocker[day][p] == 1:
-                                cand.append(di * PERIODS_PER_DAY + p)
-                
-                for g in range(group_count):
-                    group_counter += 1
-                    start_idx = student_idx
-                    end_idx = min(start_idx + students_per_group, len(all_students))
-                    group_students = all_students[start_idx:end_idx]
-                    student_idx = end_idx
-                    
-                    for i in range(hours_per_week):
-                        session_id = f"S{sid}_G{group_counter}_H{i}"
-                        new_session = {
-                            'id': session_id,
-                            'subject': sid,
-                            'teacher': tid,
-                            'group': group_counter,
-                            'students': group_students,
-                            'candidates': cand.copy(),
-                            'max_per_day': maxpd,
-                            'parallel_with': None
-                        }
-                        sessions.append(new_session)
-                        subject_sessions.setdefault(sid, []).append(new_session)
+                for hour in range(hours_per_week):
+                    session = create_session(
+                        sid=sid,
+                        teachers_list=[tid],
+                        hour=hour,
+                        students=all_students,
+                        teacher_info=teachers[tid],
+                        maxpd=maxpd,
+                        hour_blocker=hour_blocker,
+                        parallel_group=None
+                    )
+                    sessions.append(session)
 
     return sessions
 
-# --- Greedy Initial Assignment ---
-def greedy_initial(sessions):
-    """
-    Assign each session greedily to the first available slot,
-    respecting teacher availability and per-day subject-group limits.
-    Returns a list of assigned slot indices, with fallbacks aggregated into one warning.
-    """
-    teacher_schedule = {}
-    subject_daily = {}
-    assignment = []
-    fallbacks = []
-
-    for sess in sessions:
-        sid, grp, maxpd, tid = sess['subject'], sess['group'], sess['max_per_day'], sess['teacher']
-        placed = False
-        for slot in sess['candidates']:
-            day = slot // PERIODS_PER_DAY
-            if slot in teacher_schedule.get(tid, set()):
-                continue
-            if subject_daily.get((sid, grp, day), 0) >= maxpd:
-                continue
-            teacher_schedule.setdefault(tid, set()).add(slot)
-            subject_daily[(sid, grp, day)] = subject_daily.get((sid, grp, day), 0) + 1
-            assignment.append(slot)
-            placed = True
-            break
-        if not placed:
-            # record fallback, but do not spam log per session
-            fallbacks.append((sess['id'], sess['candidates'][:3]))  # show up to 3 candidates
-            assignment.append(sess['candidates'][0] if sess['candidates'] else -1)
-
-    if fallbacks:
-        # one summary warning
-        fallback_info = ", ".join(f"{sid}([{slots}...])" for sid, slots in fallbacks)
-        logger.warning(f"Greedy fallback used for {len(fallbacks)} sessions: {fallback_info}")
-
-    return assignment
-
-# --- Backtracking Solver with MRV ---
-def score_slot_quality(slot, day_counts, period_counts, max_per_period=3):
-    """Score the quality of placing a session in a given slot (lower is better)"""
-    day = slot // PERIODS_PER_DAY
-    period = slot % PERIODS_PER_DAY
-    
-    # Penalize high concentrations
-    day_penalty = day_counts[day] * 2
-    period_penalty = period_counts[period] * 3
-    
-    # Prefer middle periods
-    period_preference = abs(period - PERIODS_PER_DAY//2)
-    
-    # Hard limit on sessions per period
-    if period_counts[period] >= max_per_period:
-        return float('inf')
+def create_session(sid, teachers_list, hour, students, teacher_info, maxpd, hour_blocker, parallel_group=None):
+    """Modified to handle multiple teachers per session"""
+    cand = []
+    # Find slots where ALL teachers are available
+    for di, day in enumerate(DAYS):
+        all_available = True
+        for tid in teachers_list:
+            # For regular sessions, teacher_info is a single teacher's info
+            # For parallel sessions, it's the full teachers dictionary
+            teacher = teacher_info[tid] if isinstance(teacher_info, dict) else teacher_info
+            if not teacher[4 + di]:  # Check day availability (mon=4, tue=5, wed=6, thu=7)
+                all_available = False
+                break
         
-    return day_penalty + period_penalty + period_preference
+        if all_available:
+            for p in range(PERIODS_PER_DAY):
+                if hour_blocker[day][p] == 1:
+                    cand.append(di * PERIODS_PER_DAY + p)
+    
+    return {
+        'id': f"S{sid}_H{hour}",
+        'subject': sid,
+        'teachers': teachers_list,  # Now a list of teachers
+        'group': 1,
+        'students': students,
+        'candidates': cand,
+        'max_per_day': maxpd,
+        'parallel_with': parallel_group,
+        'is_parallel': parallel_group is not None
+    }
 
-def backtracking_schedule(sessions):
-    global backtrack_calls
-    indexed = list(enumerate(sessions))
-    # Sort by complexity: student count, candidate flexibility, and hour constraints
-    indexed.sort(key=lambda x: (
-        len(x[1]['students']), 
-        -len(x[1]['candidates']),
-        x[1]['max_per_day']
-    ))
+def evaluate_schedule(schedule, all_sessions):
+    """Modified evaluation with higher penalties for critical constraints"""
+    score = 0
+    scheduled = defaultdict(int)
+    required = defaultdict(int)
     
-    assignment = {}
-    teacher_schedule = {}
-    subject_daily = {}
-    day_counts = {d: 0 for d in range(len(DAYS))}
-    period_counts = {p: 0 for p in PERIODS_PER_DAY}
-    backtrack_calls = 0
+    # Count required sessions
+    for sess in all_sessions:
+        required[sess['subject']] += 1
     
-    def backtrack(idx):
-        global backtrack_calls
-        backtrack_calls += 1
-        if idx == len(indexed):
-            return True
+    # Track subject occurrences per day and teacher assignments
+    subject_daily = defaultdict(lambda: defaultdict(int))
+    teacher_slots = defaultdict(set)
+    
+    for (day, period), slots in schedule.items():
+        slot_num = day * PERIODS_PER_DAY + period
+        teachers_this_slot = set()
+        students_this_slot = set()
+        
+        for sess in slots:
+            scheduled[sess['subject']] += 1
             
-        sess_index, sess = indexed[idx]
-        sid, grp, maxpd, tid = sess['subject'], sess['group'], sess['max_per_day'], sess['teacher']
+            # Teacher conflicts (increased penalty)
+            for tid in sess['teachers']:
+                if tid in teachers_this_slot:
+                    score += 5000  # Increased from 2000
+                teachers_this_slot.add(tid)
+                teacher_slots[tid].add(slot_num)
+            
+            # Student conflicts
+            student_set = set(sess['students'])
+            if students_this_slot & student_set:
+                score += 2000  # Increased from 1500
+            students_this_slot |= student_set
+            
+            # Track daily limits
+            subject_daily[sess['subject']][day] += 1
+            if subject_daily[sess['subject']][day] > sess['max_per_day']:
+                score += 1000  # Increased from 800
+    
+    # Missing or extra sessions penalty (highest priority)
+    for subject, req_count in required.items():
+        diff = abs(scheduled[subject] - req_count)
+        if diff > 0:
+            score += diff * 10000  # Significantly increased from 3000
+    
+    return score
+
+def greedy_initial(sessions):
+    """Improved initial solution generation with strict session count enforcement"""
+    # Track required and scheduled sessions per subject
+    subject_requirements = defaultdict(int)
+    for sess in sessions:
+        subject_requirements[sess['subject']] += 1
+    
+    # Sort sessions prioritizing those with most unmet requirements
+    sorted_sessions = sorted(sessions, key=lambda s: (
+        subject_requirements[s['subject']],  # Most required sessions first
+        -len(s['students']),  # More students = more constraints
+        len(s['candidates'])  # Fewer candidates = more constrained
+    ), reverse=True)
+    
+    teacher_schedule = defaultdict(set)  # Track teacher assignments
+    subject_daily = defaultdict(lambda: defaultdict(int))
+    schedule = {}
+    unplaced = []
+    
+    # First pass - try to place all required sessions
+    for sess in sorted_sessions:
+        placed = False
+        # Sort candidate slots by preference
+        sorted_slots = sorted(
+            sess['candidates'],
+            key=lambda slot: (
+                len(schedule.get((slot // PERIODS_PER_DAY, slot % PERIODS_PER_DAY), [])),
+                abs((slot % PERIODS_PER_DAY) - PERIODS_PER_DAY//2)  # Prefer middle periods
+            )
+        )
         
-        # Sort candidates by quality score
-        candidates = [(slot, score_slot_quality(slot, day_counts, period_counts))
-                     for slot in sess['candidates']]
-        candidates.sort(key=lambda x: x[1])
-        
-        for slot, _ in candidates:
+        for slot in sorted_slots:
             day = slot // PERIODS_PER_DAY
             period = slot % PERIODS_PER_DAY
+            key = (day, period)
             
-            if slot in teacher_schedule.get(tid, set()): continue
-            if subject_daily.get((sid, grp, day), 0) >= maxpd: continue
+            # Skip if exceeds daily limit
+            if subject_daily[sess['subject']][day] >= sess['max_per_day']:
+                continue
             
-            # Try assignment
-            assignment[sess_index] = slot
-            teacher_schedule.setdefault(tid, set()).add(slot)
-            subject_daily[(sid, grp, day)] = subject_daily.get((sid, grp, day), 0) + 1
-            day_counts[day] += 1
-            period_counts[period] += 1
+            # Check teacher availability
+            if any(slot in teacher_schedule[tid] for tid in sess['teachers']):
+                continue
+                
+            # Check slot capacity and conflicts
+            current_slot = schedule.get(key, [])
+            if len(current_slot) >= 3:
+                continue
+                
+            # Check student conflicts
+            if any(set(sess['students']) & set(s['students']) for s in current_slot):
+                continue
             
-            if backtrack(idx+1): return True
+            # Place session
+            schedule.setdefault(key, []).append(sess)
+            for tid in sess['teachers']:
+                teacher_schedule[tid].add(slot)
+            subject_daily[sess['subject']][day] += 1
+            placed = True
+            break
             
-            # Undo assignment
-            teacher_schedule[tid].remove(slot)
-            subject_daily[(sid, grp, day)] -= 1
-            day_counts[day] -= 1
-            period_counts[period] -= 1
-            del assignment[sess_index]
-            
-        return False
+        if not placed:
+            unplaced.append(sess)
     
-    success = backtrack(0)
-    if not success:
-        return None
+    # Second pass - try to place unplaced sessions in any valid slot
+    for sess in unplaced:
+        best_slot = None
+        best_score = float('inf')
         
-    schedule = {}
-    for idx, slot in assignment.items():
-        di, p = divmod(slot, PERIODS_PER_DAY)
-        schedule.setdefault((di, p), []).append(sessions[idx])
+        for slot in sess['candidates']:
+            day = slot // PERIODS_PER_DAY
+            period = slot % PERIODS_PER_DAY
+            key = (day, period)
+            
+            if subject_daily[sess['subject']][day] >= sess['max_per_day']:
+                continue
+                
+            current_slot = schedule.get(key, [])
+            if len(current_slot) >= 3:
+                continue
+                
+            # Calculate slot score (lower is better)
+            score = 0
+            # Penalize teacher conflicts
+            if any(slot in teacher_schedule[tid] for tid in sess['teachers']):
+                score += 1000
+            # Penalize student conflicts
+            if any(set(sess['students']) & set(s['students']) for s in current_slot):
+                score += 500
+            # Prefer middle periods
+            score += abs(period - PERIODS_PER_DAY//2)
+            
+            if score < best_score:
+                best_score = score
+                best_slot = slot
+        
+        if best_slot is not None:
+            day = best_slot // PERIODS_PER_DAY
+            period = best_slot % PERIODS_PER_DAY
+            key = (day, period)
+            schedule.setdefault(key, []).append(sess)
+            for tid in sess['teachers']:
+                teacher_schedule[tid].add(best_slot)
+            subject_daily[sess['subject']][day] += 1
+    
     return schedule
+
+# --- Solver Process ---
+@lru_cache(maxsize=1024)
+def get_parallel_group_requirements(subject_id, group_id):
+    """Cache parallel group requirements. Now uses immutable types."""
+    return f"P{subject_id}_{group_id}"
+
+def solver_process(sessions, shared_best_score, shared_best_schedule, shared_lock, process_id, time_limit):
+    """Modified solver process to handle partial solutions better"""
+    start_time = time.time()
+    last_log_time = start_time
+    last_log_iterations = 0
+    iteration_times = []
+    iter_start = time.time()  # Initialize first iteration timing
+    
+    local_best_score = float('inf')
+    local_best_schedule = {}
+    
+    # Pre-compute compatible sessions using frozensets for faster lookups
+    compatible = precompute_compatible_slots(sessions)
+    session_lookup = {s['id']: i for i, s in enumerate(sessions)}
+    
+    iterations = 0
+    stagnant_iterations = 0
+    
+    # Initialize with multiple starting points
+    schedules = [greedy_initial(sessions) for _ in range(3)]
+    current_schedule = min(schedules, key=lambda s: evaluate_schedule(s, sessions))
+    
+    # Get initial score
+    current_score = evaluate_schedule(current_schedule, sessions)
+    if current_score < local_best_score:
+        local_best_score = current_score
+        local_best_schedule = copy.deepcopy(current_schedule)
+        with shared_lock:
+            if current_score < shared_best_score.value:
+                shared_best_score.value = current_score
+                shared_best_schedule.clear()
+                shared_best_schedule.update(local_best_schedule)
+    
+    while iterations < MAX_SOLVER_ITERATIONS and time.time() - start_time < time_limit:
+        iter_time = time.time() - iter_start  # Calculate previous iteration time
+        iteration_times.append(iter_time)
+        
+        iterations += 1
+        iter_start = time.time()  # Start timing new iteration
+        
+        if iterations % PROGRESS_INTERVAL == 0:
+            current_time = time.time()
+            elapsed_since_log = current_time - last_log_time
+            
+            if iteration_times:
+                recent_times = iteration_times[-min(100, len(iteration_times)):]
+                avg_time = sum(recent_times) / len(recent_times)
+                batch_time = elapsed_since_log / min(PROGRESS_INTERVAL, iterations)
+                
+                logger.info(
+                    f"Process {process_id}: "
+                    f"Iteration {iterations}/{MAX_SOLVER_ITERATIONS}, "
+                    f"score: {local_best_score}, "
+                    f"iter time: {avg_time*1000:.1f}ms, "
+                    f"batch: {batch_time*1000:.1f}ms/iter"
+                )
+            
+            last_log_time = current_time
+            last_log_iterations = iterations
+
+        # Early exit if perfect solution found
+        if local_best_score == 0:
+            with shared_lock:
+                shared_best_score.value = 0
+                shared_best_schedule.update(local_best_schedule)
+            return
+
+        if stagnant_iterations >= IMPROVEMENT_THRESHOLD:
+            current_schedule = greedy_initial(sessions)
+            stagnant_iterations = 0
+            continue
+
+        # Smart move selection - focus on parallel groups first
+        move_candidates = []
+        for (day, period), slots in current_schedule.items():
+            if not slots:  # Skip empty slots
+                continue
+            for i, sess in enumerate(slots):
+                if i >= len(slots):  # Ensure index is valid
+                    continue
+                if sess['parallel_with']:  # Prioritize parallel sessions
+                    move_candidates.insert(0, (day, period, i))
+                else:
+                    move_candidates.append((day, period, i))
+        
+        improved = False
+        for day, period, sess_idx in move_candidates[:min(len(move_candidates), 10)]:
+            # Validate slot exists and index is in range
+            if (day, period) not in current_schedule or \
+               sess_idx >= len(current_schedule[(day, period)]):
+                continue
+
+            # Try moving this session to different slots
+            try:
+                original_slot = current_schedule[(day, period)].pop(sess_idx)
+            except IndexError:
+                # Skip if index becomes invalid (due to concurrent modifications)
+                continue
+
+            for new_slot in original_slot['candidates']:
+                new_day = new_slot // PERIODS_PER_DAY
+                new_period = new_slot % PERIODS_PER_DAY
+                new_key = (new_day, new_period)
+                
+                if new_key == (day, period):
+                    continue
+                    
+                target_slot = current_schedule.get(new_key, [])
+                if len(target_slot) >= 3:
+                    continue
+                    
+                # Check if move is valid
+                if not any(tid in [s['teachers'] for s in target_slot] for tid in original_slot['teachers']) and \
+                   not any(set(s['students']) & set(original_slot['students']) for s in target_slot):
+                    
+                    # Try the move
+                    target_slot.append(original_slot)
+                    score = evaluate_schedule(current_schedule, sessions)
+                    
+                    if score < local_best_score:
+                        local_best_score = score
+                        local_best_schedule = {k: v[:] for k, v in current_schedule.items()}
+                        improved = True
+                        stagnant_iterations = 0
+                    else:
+                        # Undo move
+                        target_slot.remove(original_slot)
+            
+            # Put session back if no better position found
+            if not improved:
+                try:
+                    current_schedule[(day, period)].insert(sess_idx, original_slot)
+                except IndexError:
+                    # If insertion fails, append to end
+                    current_schedule[(day, period)].append(original_slot)
+
+        if not improved:
+            stagnant_iterations += 1
+        else:
+            with shared_lock:
+                if local_best_score < shared_best_score.value:
+                    shared_best_score.value = local_best_score
+                    shared_best_schedule.clear()
+                    shared_best_schedule.update(local_best_schedule)
+                    logger.info(f"Process {process_id}: New best score: {local_best_score}")
+
+# --- Solver with Parallel Processing ---
+def solve_timetable(sessions, time_limit=600):
+    """Improved solver with parallel processing and partial solution handling"""
+    sessions = sorted(sessions, 
+                     key=lambda s: (s['parallel_with'] is not None,
+                                  len(s['candidates']),
+                                  s['max_per_day']), 
+                     reverse=True)
+                     
+    manager = Manager()
+    shared_best_score = manager.Value('d', float('inf'))
+    shared_best_schedule = manager.dict()
+    shared_lock = manager.Lock()
+    
+    # Store initial solution as fallback
+    initial_schedule = greedy_initial(sessions)
+    initial_score = evaluate_schedule(initial_schedule, sessions)
+    with shared_lock:
+        shared_best_score.value = initial_score
+        shared_best_schedule.update(initial_schedule)
+    
+    # Run parallel processes
+    num_processes = max(1, mp.cpu_count() - 1)
+    processes = []
+    for i in range(num_processes):
+        p = mp.Process(
+            target=solver_process,
+            args=(copy.deepcopy(sessions), shared_best_score, shared_best_schedule, 
+                  shared_lock, i, time_limit)
+        )
+        processes.append(p)
+        p.start()
+
+    for p in processes:
+        p.join()
+        
+    if shared_best_score.value == float('inf'):
+        logger.warning("No solution found, returning initial solution")
+        return initial_schedule
+        
+    return dict(shared_best_schedule)
 
 # --- Helper Function for Student Sessions ---
 def get_student_sessions(sessions):
@@ -404,9 +603,10 @@ def is_perfect_solution(schedule, subjects, sessions):
         # Check teacher conflicts
         teachers = set()
         for sess in slots:
-            if sess['teacher'] in teachers:
-                return False
-            teachers.add(sess['teacher'])
+            for tid in sess['teachers']:
+                if tid in teachers:
+                    return False
+                teachers.add(tid)
             
         # Check student conflicts
         students = set()
@@ -431,11 +631,16 @@ def precompute_compatible_slots(sessions):
     for i, sess1 in enumerate(sessions):
         compatible[i] = set()
         for j, sess2 in enumerate(sessions):
-            if i != j and sess1['teacher'] != sess2['teacher'] and \
-               not set(sess1['students']) & set(sess2['students']) and \
-               (sess1['parallel_with'] != sess2['parallel_with'] or \
-                sess1['parallel_with'] is None):
-                compatible[i].add(j)
+            if i != j and not any(tid in sess2['teachers'] for tid in sess1['teachers']) and \
+               not set(sess1['students']) & set(sess2['students']):
+                # For parallel sessions, they must be scheduled together
+                if sess1['parallel_with'] is not None and sess2['parallel_with'] is not None:
+                    if sess1['parallel_with'] == sess2['parallel_with']:
+                        compatible[i].add(j)  # Always compatible with other parts of same parallel group
+                    else:
+                        continue  # Different parallel groups can't be in same slot
+                else:
+                    compatible[i].add(j)
     return compatible
 
 @lru_cache(maxsize=1024)
@@ -445,9 +650,14 @@ def get_slot_score(day, period):
     period_penalty = abs(period - PERIODS_PER_DAY//2) * 2
     return period_penalty + day * 3
 
+@lru_cache(maxsize=1024)
+def get_parallel_groups_for_timeslot(slot_sessions_key):
+    """Cache parallel group analysis for a given timeslot"""
+    return {s['parallel_with'] for s in slot_sessions_key if s['parallel_with']}
+
 def try_place_parallel_group(schedule, sess, slot, compatible_sessions):
     """Try to place all sessions in a parallel group together"""
-    if sess['parallel_with'] is None:
+    if not sess['parallel_with']:
         return True
         
     day = slot // PERIODS_PER_DAY
@@ -455,258 +665,20 @@ def try_place_parallel_group(schedule, sess, slot, compatible_sessions):
     key = (day, period)
     current = schedule.get(key, [])
     
-    # Find all other parallel sessions in this time slot
-    parallel_sessions = []
-    for s in current:
-        if isinstance(s, dict) and s['subject'] == sess['subject'] and s['parallel_with'] is not None:
-            parallel_sessions.append(s)
+    # Get all parallel sessions for this group
+    parallel_sessions = [s for s in current 
+                       if s['parallel_with'] == sess['parallel_with']]
     
-    # Check if we can fit all parallel sessions in this slot
-    if len(current) + len(parallel_sessions) > 3:
+    # Check if adding this session would exceed daily limit
+    daily_count = sum(1/s['total_teachers'] for s in parallel_sessions)
+    if daily_count + 1/sess['total_teachers'] > sess['max_per_day']:
+        return False
+    
+    # Check slot capacity
+    if len(current) + 1 > 3:
         return False
         
-    # Check compatibility with existing sessions
-    for psess in parallel_sessions:
-        for csess in current:
-            if isinstance(csess, dict):
-                idx1 = next((i for i, s in enumerate(sessions) if s['id'] == psess['id']), None)
-                idx2 = next((i for i, s in enumerate(sessions) if s['id'] == csess['id']), None)
-                if idx1 is not None and idx2 is not None and idx2 not in compatible_sessions[idx1]:
-                    return False
-                    
     return True
-
-def solve_timetable(sessions, time_limit=600):
-    """Improved solver with better heuristics and caching"""
-    start_time = time.time()
-    last_log_time = start_time
-    last_log_iterations = 0
-    best_schedule = {}
-    best_score = float('inf')
-    
-    # Pre-compute compatible sessions
-    compatible_sessions = precompute_compatible_slots(sessions)
-    
-    # Group parallel sessions by subject for faster access
-    parallel_groups = {}
-    for i, sess in enumerate(sessions):
-        if sess['parallel_with'] is not None:
-            parallel_groups.setdefault(sess['subject'], []).append(i)
-    
-    def create_initial_solution():
-        schedule = {}
-        subject_day_counts = {}
-        session_indices = list(range(len(sessions)))
-        
-        # Sort sessions by constraint difficulty
-        session_indices.sort(key=lambda i: (
-            -bool(sessions[i]['parallel_with']),  # Parallel groups first
-            len(sessions[i]['candidates']),       # Fewer candidates next
-            -len(sessions[i]['students']),        # More students next
-        ))
-        
-        for idx in session_indices:
-            sess = sessions[idx]
-            candidates = [(s, get_slot_score(s // PERIODS_PER_DAY, s % PERIODS_PER_DAY)) 
-                         for s in sess['candidates']]
-            candidates.sort(key=lambda x: x[1])
-            
-            placed = False
-            for slot, _ in candidates:
-                day = slot // PERIODS_PER_DAY
-                period = slot % PERIODS_PER_DAY
-                key = (day, period)
-                
-                # Quick rejection checks
-                if subject_day_counts.get((sess['subject'], day), 0) >= sess['max_per_day']:
-                    continue
-                    
-                current = schedule.get(key, [])
-                if len(current) >= 3:
-                    continue
-                
-                # Check teacher and student conflicts
-                if any(s['teacher'] == sess['teacher'] for s in current):
-                    continue
-                    
-                # Try placing this session
-                if try_place_parallel_group(schedule, sess, slot, compatible_sessions):
-                    schedule.setdefault(key, []).append(sess)
-                    subject_day_counts[(sess['subject'], day)] = \
-                        subject_day_counts.get((sess['subject'], day), 0) + 1
-                    placed = True
-                    break
-                    
-            if not placed:
-                # If we can't place a session, try to place it anywhere valid
-                for slot in sess['candidates']:
-                    day = slot // PERIODS_PER_DAY
-                    period = slot % PERIODS_PER_DAY
-                    key = (day, period)
-                    if len(schedule.get(key, [])) < 3:
-                        schedule.setdefault(key, []).append(sess)
-                        break
-        
-        return schedule
-
-    # Main solver loop
-    iterations = 0
-    stagnant_iterations = 0
-    current_schedule = create_initial_solution()
-    
-    while iterations < MAX_SOLVER_ITERATIONS and time.time() - start_time < time_limit:
-        iterations += 1
-        
-        # Enhanced progress logging with timing metrics
-        if iterations % PROGRESS_INTERVAL == 0:
-            current_time = time.time()
-            elapsed_since_log = current_time - last_log_time
-            iterations_since_log = iterations - last_log_iterations
-            
-            # Calculate timing metrics
-            avg_time_per_iter = elapsed_since_log / iterations_since_log
-            time_per_hundred = avg_time_per_iter * 100
-            
-            logger.info(
-                f"Iteration {iterations}/{MAX_SOLVER_ITERATIONS}, "
-                f"best score: {best_score} (missing: {best_score//1000} sessions), "
-                f"avg {avg_time_per_iter:.3f}s/iter, "
-                f"100 iterations = {time_per_hundred:.1f}s"
-            )
-            
-            last_log_time = current_time
-            last_log_iterations = iterations
-
-        # Check if current solution is perfect
-        if best_score == 0:
-            logger.info(f"Found perfect solution at iteration {iterations}")
-            return best_schedule
-        
-        # If stuck, restart with new random solution
-        if stagnant_iterations >= IMPROVEMENT_THRESHOLD:
-            logger.info(f"Restarting search at iteration {iterations}")
-            current_schedule = create_initial_solution()
-            stagnant_iterations = 0
-            continue
-        
-        improved = False
-        
-        # Try to improve current solution
-        for day in range(len(DAYS)):
-            for period in range(PERIODS_PER_DAY):
-                key = (day, period)
-                if key not in current_schedule:
-                    continue
-                    
-                sessions_at_slot = current_schedule[key]
-                for i, sess in enumerate(sessions_at_slot):
-                    # Try moving session to a different slot
-                    original_slot = sessions_at_slot.pop(i)
-                    
-                    # Try each candidate slot
-                    for new_slot in sess['candidates']:
-                        new_day = new_slot // PERIODS_PER_DAY
-                        new_period = new_slot % PERIODS_PER_DAY
-                        new_key = (new_day, new_period)
-                        
-                        if new_key == key:
-                            continue
-                            
-                        # Check if move is valid
-                        target_slot = current_schedule.get(new_key, [])
-                        if len(target_slot) >= 3:
-                            continue
-                            
-                        # Check constraints at new slot
-                        if not any(s['teacher'] == sess['teacher'] for s in target_slot) and \
-                           not any(set(s['students']) & set(sess['students']) for s in target_slot):
-                            
-                            # Try the move
-                            target_slot.append(sess)
-                            score = evaluate_schedule(current_schedule, sessions)
-                            
-                            if score < best_score:
-                                best_score = score
-                                best_schedule = {k: v[:] for k, v in current_schedule.items()}
-                                improved = True
-                                stagnant_iterations = 0
-                            else:
-                                # Undo move
-                                target_slot.remove(sess)
-                    
-                    # Put session back if no better position found
-                    if not improved:
-                        sessions_at_slot.insert(i, original_slot)
-        
-        if not improved:
-            stagnant_iterations += 1
-    
-    logger.info(f"Solver completed {iterations}/{MAX_SOLVER_ITERATIONS} iterations in {time.time() - start_time:.1f}s")
-    return best_schedule
-
-def evaluate_schedule(schedule, all_sessions):
-    """Score a schedule (lower is better)"""
-    score = 0
-    
-    # Count missing/unscheduled sessions
-    scheduled_sessions = set()
-    for slots in schedule.values():
-        for sess in slots:
-            scheduled_sessions.add(sess['id'])
-    
-    missing_sessions = len(all_sessions) - len(scheduled_sessions)
-    missing_penalty = 1000 * missing_sessions
-    score += missing_penalty
-    
-    # Track penalties by type
-    teacher_conflicts = 0
-    student_conflicts = 0
-    daily_limit_violations = 0
-    parallel_violations = 0
-    
-    # Check daily limits and conflicts
-    day_counts = {}
-    for (day, period), sessions in schedule.items():
-        # Teacher conflicts
-        teachers = set()
-        parallel_groups = {}
-        for sess in sessions:
-            if sess['teacher'] in teachers:
-                teacher_conflicts += 1
-            teachers.add(sess['teacher'])
-            
-            # Track daily subject counts
-            key = (day, sess['subject'], sess['group'])
-            day_counts[key] = day_counts.get(key, 0) + 1
-            if day_counts[key] > sess['max_per_day']:
-                daily_limit_violations += 1
-            
-            # Check parallel group violations
-            if sess['parallel_with'] is not None:
-                base_group = sess['parallel_with']
-                if base_group not in parallel_groups:
-                    parallel_violations += 1
-                parallel_groups[base_group] = sess
-        
-        # Student conflicts
-        student_counts = {}
-        for sess in sessions:
-            for student in sess['students']:
-                student_counts[student] = student_counts.get(student, 0) + 1
-                if student_counts[student] > 1:
-                    student_conflicts += 1
-    
-    score += teacher_conflicts * 500
-    score += student_conflicts * 300
-    score += daily_limit_violations * 400
-    score += parallel_violations * 600  # High penalty for parallel violations
-    
-    # Log detailed score breakdown when it changes
-    if hasattr(evaluate_schedule, 'last_score') and evaluate_schedule.last_score != score:
-        logger.debug(f"Score breakdown: missing={missing_penalty}, teachers={teacher_conflicts*500}, students={student_conflicts*300}, daily={daily_limit_violations*400}, parallel={parallel_violations*600}")
-    
-    evaluate_schedule.last_score = score
-    return score
 
 def has_major_conflicts(schedule):
     """Check for deal-breaking conflicts"""
@@ -714,9 +686,10 @@ def has_major_conflicts(schedule):
         # Check teacher conflicts
         teachers = set()
         for sess in sessions:
-            if sess['teacher'] in teachers:
-                return True
-            teachers.add(sess['teacher'])
+            for tid in sess['teachers']:
+                if tid in teachers:
+                    return True
+                teachers.add(tid)
     return False
 
 def analyze_schedule_issues(schedule, sessions):
@@ -725,47 +698,24 @@ def analyze_schedule_issues(schedule, sessions):
     
     # Track sessions per subject and daily distribution
     subject_counts = {}
-    subject_day_counts = {}
+    day_counts = {}
     
     for (day, period), slots in schedule.items():
         for sess in slots:
             sid = sess['subject']
             subject_counts[sid] = subject_counts.get(sid, 0) + 1
             
-            # Track daily distribution for parallel subjects
-            if sess['parallel_with'] is not None:
-                key = (sid, day)
-                subject_day_counts[key] = subject_day_counts.get(key, 0) + 1
+            # Track daily counts for all subjects the same way
+            key = (day, sid)
+            day_counts[key] = day_counts.get(key, 0) + 1
+            if day_counts[key] > sess['max_per_day']:
+                issues.append(f"Subject {sid} exceeds daily limit on {DAYS[day]}")
     
-    # Check daily distribution for parallel subjects
-    for (sid, day), count in subject_day_counts.items():
-        if count > 2:  # Max 2 periods per day for parallel subjects
-            issues.append(f"Subject {sid} has {count} parallel sessions on {DAYS[day]} (max 2)")
-            
     # Check missing/extra sessions
     for sid, count in subject_counts.items():
         expected = sum(1 for s in sessions if s['subject'] == sid)
         if count != expected:
             issues.append(f"Subject {sid} has {count} sessions (expected {expected})")
-    
-    # Check daily limits
-    day_counts = {}
-    for (day, period), slots in schedule.items():
-        for sess in slots:
-            key = (day, sess['subject'], sess['group'])
-            day_counts[key] = day_counts.get(key, 0) + 1
-            if day_counts[key] > sess['max_per_day']:
-                issues.append(f"Subject {sess['subject']} group {sess['group']} exceeds daily limit on {DAYS[day]}")
-    
-    # Check parallel group violations
-    for (day, period), slot_sessions in schedule.items():
-        parallel_groups = {}
-        for sess in slot_sessions:
-            if sess['parallel_with'] is not None:
-                base_group = sess['parallel_with']
-                if base_group in parallel_groups:
-                    issues.append(f"Parallel groups for subject {sess['subject']} must be scheduled together")
-                parallel_groups[base_group] = sess
     
     return issues
 
@@ -808,10 +758,10 @@ def validate_teacher_conflicts(schedule):
     for (day, period), sessions in schedule.items():
         teachers = {}
         for sess in sessions:
-            tid = sess['teacher']
-            if tid in teachers:
-                issues.append(f"Teacher {tid} has multiple sessions on {DAYS[day]} period {period+1}")
-            teachers[tid] = sess['id']
+            for tid in sess['teachers']:
+                if tid in teachers:
+                    issues.append(f"Teacher {tid} has multiple sessions on {DAYS[day]} period {period+1}")
+                teachers[tid] = sess['id']
             
     return issues
 
@@ -857,61 +807,42 @@ def validate_student_attendance(schedule, sessions):
 if __name__ == '__main__':
     teachers, subjects, students_raw, st_map, stud_map, hb = load_data()
     sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
-    schedule = solve_timetable(sessions)
     
-    if not schedule:
-        print("Could not find any valid solution")
-        exit(1)
-
-    # Add type check for schedule before validation
-    if not isinstance(schedule, dict):
-        print("Invalid schedule format")
-        exit(1)
+    # Single run with longer time limit
+    MAX_SOLVER_ITERATIONS = 3000
+    schedule = solve_timetable(sessions, time_limit=1200)  # 20 minutes
+    
+    if schedule:
+        score = evaluate_schedule(schedule, sessions)
+        print(f"\nFound solution with score: {score}")
         
-    # Validate final schedule
-    completeness_issues = validate_schedule_completeness(schedule, subjects, sessions)
-    teacher_issues = validate_teacher_conflicts(schedule)
-    student_issues = validate_student_attendance(schedule, sessions)
-    
-    print("\nSchedule Validation Results:")
-    if completeness_issues:
-        print("\nSubject hour requirements not met:")
-        for issue in completeness_issues:
-            print(f"- {issue}")
-            
-    if teacher_issues:
-        print("\nTeacher scheduling conflicts:")
-        for issue in teacher_issues:
-            print(f"- {issue}")
-            
-    if student_issues:
-        print("\nStudent attendance issues:")
-        for issue in student_issues:
-            print(f"- {issue}")
-            
-    if not (completeness_issues or teacher_issues or student_issues):
-        print("All validation checks passed!")
+        # Collect all validation issues
+        all_issues = []
+        all_issues.extend(analyze_schedule_issues(schedule, sessions))
+        all_issues.extend(validate_schedule_completeness(schedule, subjects, sessions))
+        all_issues.extend(validate_teacher_conflicts(schedule))
+        all_issues.extend(validate_student_attendance(schedule, sessions))
         
-    # Print regular schedule output
-    print("\nGenerated schedule (issues marked with *):")
-    issues = analyze_schedule_issues(schedule, sessions)
-    
-    for di, day in enumerate(DAYS):
-        print(f"\n=== {day.upper()} ===")
-        for p in range(PERIODS_PER_DAY):
-            se = schedule.get((di, p), [])
-            if se:
-                print(f"Period {p+1}: ", end="")
-                # Mark sessions involved in issues with *
-                marked_sessions = []
-                for sess in se:
-                    marker = "*" if any(str(sess['subject']) in issue for issue in issues) else ""
-                    marked_sessions.append(f"{sess['id']}{marker}")
-                print(", ".join(marked_sessions))
-            else:
-                print(f"Period {p+1}: Free")
-                
-    if issues:
-        print("\nIssues found:")
-        for issue in issues:
-            print(f"- {issue}")
+        if all_issues:
+            print("\nSchedule Issues Found:")
+            for issue in sorted(set(all_issues)):  # Remove duplicates and sort
+                print(f"- {issue}")
+        else:
+            print("\nNo issues found - schedule is valid!")
+        
+        # Print schedule in readable format with fixed string conversion
+        print("\nGenerated Schedule:")
+        for day_idx, day in enumerate(DAYS):
+            print(f"\n=== {day.upper()} ===")
+            for period in range(PERIODS_PER_DAY):
+                key = (day_idx, period)
+                if key in schedule:
+                    sessions_here = schedule[key]
+                    sessions_str = ", ".join(f"{s['subject']} (T:{','.join(str(t) for t in s['teachers'])})" 
+                                           for s in sessions_here)
+                    print(f"Period {period+1}: {sessions_str}")
+                else:
+                    print(f"Period {period+1}: ---")
+    else:
+        print("No solution found")
+        exit(1)
