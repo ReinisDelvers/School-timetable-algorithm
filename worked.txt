@@ -1,0 +1,58 @@
+2025-05-05 22:45:07,438 - INFO - Loaded 26 teachers, 20 subjects, 90 students
+
+Found solution with score: 0
+
+Schedule Validation Results:
+
+Subject Requirement Issues:
+- Subject 70 has 4 sessions (requires 2)
+
+Generated Schedule:
+
+=== MONDAY ===
+Period 1: 76 (T:47), 63 (T:46)
+Period 2: 70 (T:35)
+Period 3: 57 (T:52,51,50,49)
+Period 4: 64 (T:43), 79 (T:42)
+Period 5: 74 (T:39,41), 75 (T:40)
+Period 6: 74 (T:39,41), 75 (T:40)
+Period 7: 64 (T:43), 79 (T:42), 54 (T:48)
+Period 8: 57 (T:52,51,50,49)
+Period 9: 77 (T:38), 69 (T:33)
+Period 10: 53 (T:45), 72 (T:44)
+
+=== TUESDAY ===
+Period 1: 78 (T:42), 71 (T:37), 50 (T:31)
+Period 2: 53 (T:45)
+Period 3: 77 (T:38)
+Period 4: 64 (T:43), 69 (T:33)
+Period 5: 74 (T:39,41)
+Period 6: 74 (T:39,41), 75 (T:40)
+Period 7: 64 (T:43), 79 (T:42)
+Period 8: 57 (T:52,51,50,49)
+Period 9: 70 (T:36), 49 (T:32)
+Period 10: 76 (T:47), 63 (T:46)
+
+=== WEDNESDAY ===
+Period 1: 80 (T:29,27,28,30)
+Period 2: 78 (T:42), 71 (T:37), 50 (T:31)
+Period 3: 70 (T:35)
+Period 4: 77 (T:38)
+Period 5: 74 (T:39,41)
+Period 6: 74 (T:39,41)
+Period 7: 64 (T:43), 79 (T:42)
+Period 8: 77 (T:38)
+Period 9: 53 (T:45)
+Period 10: 78 (T:42), 55 (T:43)
+
+=== THURSDAY ===
+Period 1: 73 (T:34)
+Period 2: 78 (T:42)
+Period 3: 76 (T:47), 63 (T:46)
+Period 4: 70 (T:36), 49 (T:32)
+Period 5: 64 (T:43), 69 (T:33)
+Period 6: 74 (T:39,41)
+Period 7: 57 (T:52,51,50,49)
+Period 8: 53 (T:45), 72 (T:44)
+Period 9: 76 (T:47), 63 (T:46)
+Period 10: 80 (T:29,27,28,30)

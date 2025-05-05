@@ -222,159 +222,254 @@ def create_session(sid, teachers_list, hour, students, teacher_info, maxpd, hour
     }
 
 def evaluate_schedule(schedule, all_sessions):
-    """Modified evaluation with higher penalties for critical constraints"""
+    """Modified evaluation with stricter penalties"""
     score = 0
     scheduled = defaultdict(int)
     required = defaultdict(int)
+    student_schedule = defaultdict(lambda: defaultdict(set))
     
     # Count required sessions
     for sess in all_sessions:
         required[sess['subject']] += 1
     
-    # Track subject occurrences per day and teacher assignments
-    subject_daily = defaultdict(lambda: defaultdict(int))
-    teacher_slots = defaultdict(set)
-    
     for (day, period), slots in schedule.items():
-        slot_num = day * PERIODS_PER_DAY + period
         teachers_this_slot = set()
-        students_this_slot = set()
         
         for sess in slots:
-            scheduled[sess['subject']] += 1
+            subject = sess['subject']
+            scheduled[subject] += 1
             
-            # Teacher conflicts (increased penalty)
+            # Extremely high penalty for overlapping sessions
+            for student in sess['students']:
+                if period in student_schedule[student][day]:
+                    score += 8000  # Higher penalty for student conflicts
+                student_schedule[student][day].add(period)
+            
+            # Teacher conflicts
             for tid in sess['teachers']:
                 if tid in teachers_this_slot:
-                    score += 5000  # Increased from 2000
+                    score += 10000  # Higher penalty for teacher conflicts
                 teachers_this_slot.add(tid)
-                teacher_slots[tid].add(slot_num)
-            
-            # Student conflicts
-            student_set = set(sess['students'])
-            if students_this_slot & student_set:
-                score += 2000  # Increased from 1500
-            students_this_slot |= student_set
-            
-            # Track daily limits
-            subject_daily[sess['subject']][day] += 1
-            if subject_daily[sess['subject']][day] > sess['max_per_day']:
-                score += 1000  # Increased from 800
     
-    # Missing or extra sessions penalty (highest priority)
+    # Much higher penalties for incorrect session counts
     for subject, req_count in required.items():
-        diff = abs(scheduled[subject] - req_count)
-        if diff > 0:
-            score += diff * 10000  # Significantly increased from 3000
+        actual = scheduled[subject]
+        if actual != req_count:
+            score += abs(actual - req_count) * 20000  # Significantly increased
     
     return score
 
-def greedy_initial(sessions):
-    """Improved initial solution generation with strict session count enforcement"""
-    # Track required and scheduled sessions per subject
-    subject_requirements = defaultdict(int)
+def precompute_student_conflicts(sessions):
+    """Analyze which subject combinations cause the most conflicts"""
+    # Build student-subject map
+    student_subject_map = defaultdict(set)
     for sess in sessions:
-        subject_requirements[sess['subject']] += 1
+        for student in sess['students']:
+            student_subject_map[student].add(sess['subject'])
     
-    # Sort sessions prioritizing those with most unmet requirements
-    sorted_sessions = sorted(sessions, key=lambda s: (
-        subject_requirements[s['subject']],  # Most required sessions first
-        -len(s['students']),  # More students = more constraints
-        len(s['candidates'])  # Fewer candidates = more constrained
-    ), reverse=True)
+    # Calculate conflict pairs
+    conflict_pairs = defaultdict(int)
+    for student, subjects in student_subject_map.items():
+        for s1 in subjects:
+            for s2 in subjects:
+                if s1 < s2:
+                    conflict_pairs[(s1, s2)] += 1
+    return conflict_pairs
+
+def greedy_initial(sessions):
+    """Improved initial solution focusing on required sessions"""
+    subject_requirements = defaultdict(int)
+    subject_scheduled = defaultdict(int)
+    student_schedule = defaultdict(lambda: defaultdict(set))
     
-    teacher_schedule = defaultdict(set)  # Track teacher assignments
-    subject_daily = defaultdict(lambda: defaultdict(int))
+    # Track requirements and find hard-to-schedule subjects
+    hard_subjects = set()
+    subject_sessions = defaultdict(list)
+    for sess in sessions:
+        sid = sess['subject']
+        subject_requirements[sid] += 1
+        subject_sessions[sid].append(sess)
+        
+        # Identify subjects with limited slots or many students
+        if len(sess['candidates']) < PERIODS_PER_DAY * len(DAYS) / 2:
+            hard_subjects.add(sid)
+    
+    # Sort sessions with stricter prioritization
+    def session_priority(sess):
+        sid = sess['subject']
+        required = subject_requirements[sid]
+        scheduled = subject_scheduled[sid]
+        
+        return (
+            required > 0 and scheduled == 0,  # Prioritize subjects with no sessions placed
+            sid in hard_subjects,  # Prioritize hard-to-schedule subjects
+            required - scheduled,  # More remaining sessions = higher priority
+            -len(sess['candidates']),  # Fewer available slots = higher priority
+            len(sess['students'])  # More students = higher priority
+        )
+    
+    sorted_sessions = sorted(sessions, key=session_priority, reverse=True)
+    
+    # Initialize tracking structures
     schedule = {}
+    teacher_schedule = defaultdict(set)
+    subject_daily = defaultdict(lambda: defaultdict(int))
     unplaced = []
     
-    # First pass - try to place all required sessions
+    # First pass - strict placement for required sessions
     for sess in sorted_sessions:
+        if subject_scheduled[sess['subject']] >= subject_requirements[sess['subject']]:
+            continue
+            
+        # Try to place session with progressive relaxation
         placed = False
-        # Sort candidate slots by preference
-        sorted_slots = sorted(
-            sess['candidates'],
-            key=lambda slot: (
-                len(schedule.get((slot // PERIODS_PER_DAY, slot % PERIODS_PER_DAY), [])),
-                abs((slot % PERIODS_PER_DAY) - PERIODS_PER_DAY//2)  # Prefer middle periods
+        for allow_conflicts in [0, 1, 2]:  # Try increasingly relaxed constraints
+            best_slot = find_best_slot_relaxed(
+                sess, schedule, teacher_schedule,
+                subject_daily, student_schedule,
+                allow_conflicts
             )
-        )
-        
-        for slot in sorted_slots:
-            day = slot // PERIODS_PER_DAY
-            period = slot % PERIODS_PER_DAY
-            key = (day, period)
             
-            # Skip if exceeds daily limit
-            if subject_daily[sess['subject']][day] >= sess['max_per_day']:
-                continue
-            
-            # Check teacher availability
-            if any(slot in teacher_schedule[tid] for tid in sess['teachers']):
-                continue
+            if best_slot is not None:
+                place_session(
+                    sess, best_slot, schedule,
+                    teacher_schedule, subject_daily,
+                    subject_scheduled, student_schedule
+                )
+                placed = True
+                break
                 
-            # Check slot capacity and conflicts
-            current_slot = schedule.get(key, [])
-            if len(current_slot) >= 3:
-                continue
-                
-            # Check student conflicts
-            if any(set(sess['students']) & set(s['students']) for s in current_slot):
-                continue
-            
-            # Place session
-            schedule.setdefault(key, []).append(sess)
-            for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot)
-            subject_daily[sess['subject']][day] += 1
-            placed = True
-            break
-            
         if not placed:
             unplaced.append(sess)
     
-    # Second pass - try to place unplaced sessions in any valid slot
-    for sess in unplaced:
+    # Second pass - try to place remaining required sessions
+    for sess in sorted(unplaced, key=session_priority):
+        if subject_scheduled[sess['subject']] >= subject_requirements[sess['subject']]:
+            continue
+            
+        # Try all possible slots with minimal conflicts
         best_slot = None
-        best_score = float('inf')
+        min_conflicts = float('inf')
         
         for slot in sess['candidates']:
-            day = slot // PERIODS_PER_DAY
-            period = slot % PERIODS_PER_DAY
-            key = (day, period)
-            
-            if subject_daily[sess['subject']][day] >= sess['max_per_day']:
-                continue
-                
-            current_slot = schedule.get(key, [])
-            if len(current_slot) >= 3:
-                continue
-                
-            # Calculate slot score (lower is better)
-            score = 0
-            # Penalize teacher conflicts
-            if any(slot in teacher_schedule[tid] for tid in sess['teachers']):
-                score += 1000
-            # Penalize student conflicts
-            if any(set(sess['students']) & set(s['students']) for s in current_slot):
-                score += 500
-            # Prefer middle periods
-            score += abs(period - PERIODS_PER_DAY//2)
-            
-            if score < best_score:
-                best_score = score
+            conflicts = count_slot_conflicts(
+                sess, slot, schedule,
+                teacher_schedule, subject_daily
+            )
+            if conflicts < min_conflicts:
+                min_conflicts = conflicts
                 best_slot = slot
         
         if best_slot is not None:
-            day = best_slot // PERIODS_PER_DAY
-            period = best_slot % PERIODS_PER_DAY
-            key = (day, period)
-            schedule.setdefault(key, []).append(sess)
-            for tid in sess['teachers']:
-                teacher_schedule[tid].add(best_slot)
-            subject_daily[sess['subject']][day] += 1
+            place_session(
+                sess, best_slot, schedule,
+                teacher_schedule, subject_daily,
+                subject_scheduled, student_schedule
+            )
     
     return schedule
+
+def find_best_slot_relaxed(sess, schedule, teacher_schedule, 
+                          subject_daily, student_schedule, allow_conflicts):
+    """Find best slot with relaxed constraints"""
+    best_slot = None
+    min_score = float('inf')
+    
+    for slot in sess['candidates']:
+        day = slot // PERIODS_PER_DAY
+        period = slot % PERIODS_PER_DAY
+        key = (day, period)
+        
+        # Basic constraints
+        if (subject_daily[sess['subject']][day] >= sess['max_per_day'] or
+            len(schedule.get(key, [])) >= 3):
+            continue
+            
+        # Calculate conflicts
+        teacher_conflicts = sum(1 for tid in sess['teachers'] 
+                              if slot in teacher_schedule[tid])
+        
+        student_conflicts = 0
+        if key in schedule:
+            for other in schedule[key]:
+                student_conflicts += len(
+                    set(sess['students']) & set(other['students'])
+                )
+        
+        # Skip if too many conflicts
+        if teacher_conflicts > 0 or student_conflicts > allow_conflicts:
+            continue
+            
+        # Calculate slot score
+        score = calculate_slot_score_relaxed(
+            sess, key, slot,
+            student_conflicts,
+            teacher_conflicts,
+            allow_conflicts
+        )
+        
+        if score < min_score:
+            min_score = score
+            best_slot = slot
+    
+    return best_slot
+
+def calculate_slot_score_relaxed(sess, key, slot, 
+                               student_conflicts, teacher_conflicts,
+                               allow_conflicts):
+    """Calculate slot score with relaxed constraints"""
+    score = 0
+    day = slot // PERIODS_PER_DAY
+    period = slot % PERIODS_PER_DAY
+    
+    # Penalize conflicts based on relaxation level
+    score += student_conflicts * (1000 >> allow_conflicts)
+    score += teacher_conflicts * 5000
+    
+    # Prefer middle periods
+    score += abs(period - PERIODS_PER_DAY//2) * 10
+    
+    # Distribute across days
+    score += day * 5
+    
+    return score
+
+def count_slot_conflicts(sess, slot, schedule, teacher_schedule, subject_daily):
+    """Count conflicts for a slot"""
+    conflicts = 0
+    day = slot // PERIODS_PER_DAY
+    period = slot % PERIODS_PER_DAY
+    key = (day, period)
+    
+    # Teacher conflicts
+    for tid in sess['teachers']:
+        if slot in teacher_schedule[tid]:
+            conflicts += 100
+    
+    # Student conflicts
+    if key in schedule:
+        for other in schedule[key]:
+            conflicts += len(set(sess['students']) & set(other['students']))
+    
+    return conflicts
+
+def place_session(sess, slot, schedule, teacher_schedule, 
+                 subject_daily, subject_scheduled, student_schedule):
+    """Place a session in a slot and update all tracking structures"""
+    day = slot // PERIODS_PER_DAY
+    period = slot % PERIODS_PER_DAY
+    key = (day, period)
+    
+    schedule.setdefault(key, []).append(sess)
+    
+    for tid in sess['teachers']:
+        teacher_schedule[tid].add(slot)
+    
+    for student in sess['students']:
+        student_schedule[student][day].add(period)
+    
+    subject_daily[sess['subject']][day] += 1
+    subject_scheduled[sess['subject']] += 1
 
 # --- Solver Process ---
 @lru_cache(maxsize=1024)
@@ -804,6 +899,131 @@ def validate_student_attendance(schedule, sessions):
     return issues
 
 # --- Main ---
+def verify_schedule_constraints(schedule, sessions, subjects):
+    """Perform comprehensive schedule verification"""
+    issues = {
+        'teacher_conflicts': [],
+        'student_conflicts': [],
+        'subject_requirements': [],
+        'unscheduled': []
+    }
+    
+    # Track teacher assignments
+    teacher_schedule = defaultdict(list)
+    # Track student assignments
+    student_schedule = defaultdict(list)
+    # Track subject counts
+    subject_counts = defaultdict(int)
+    
+    for (day, period), slots in schedule.items():
+        time_slot = f"{DAYS[day]} period {period+1}"
+        
+        # Check teacher conflicts
+        teachers_this_slot = {}
+        for sess in slots:
+            for tid in sess['teachers']:
+                if tid in teachers_this_slot:
+                    issues['teacher_conflicts'].append(
+                        f"Teacher {tid} has multiple sessions in {time_slot}: "
+                        f"{teachers_this_slot[tid]} and {sess['id']}"
+                    )
+                teachers_this_slot[tid] = sess['id']
+                teacher_schedule[tid].append((day, period))
+        
+        # Check student conflicts
+        students_this_slot = {}
+        for sess in slots:
+            for student in sess['students']:
+                if student in students_this_slot:
+                    issues['student_conflicts'].append(
+                        f"Student {student} has multiple sessions in {time_slot}: "
+                        f"{students_this_slot[student]} and {sess['id']}"
+                    )
+                students_this_slot[student] = sess['id']
+                student_schedule[student].append((day, period))
+            
+            # Count subject occurrences
+            subject_counts[sess['subject']] += 1
+    
+    # Verify subject requirements are met
+    for sid, subj in subjects.items():
+        required = subj[3]  # number_of_hours_per_week
+        actual = subject_counts[sid]
+        if actual != required:
+            issues['subject_requirements'].append(
+                f"Subject {sid} has {actual} sessions (requires {required})"
+            )
+    
+    # Check for completely unscheduled sessions
+    scheduled_sessions = {sess['id'] for slots in schedule.values() for sess in slots}
+    for sess in sessions:
+        if sess['id'] not in scheduled_sessions:
+            issues['unscheduled'].append(f"Session {sess['id']} not scheduled")
+    
+    return issues
+
+def check_schedule_feasibility(schedule, sessions, subjects):
+    """Comprehensive check if the schedule is feasible"""
+    # Track assignments
+    teacher_schedule = defaultdict(list)  # {teacher_id: [(day, period), ...]}
+    student_schedule = defaultdict(list)  # {student_id: [(day, period), ...]}
+    subject_counts = defaultdict(int)     # {subject_id: count}
+    issues = []
+    
+    # Build schedules and check constraints
+    for (day, period), slots in schedule.items():
+        slot_teachers = set()
+        slot_students = set()
+        
+        for sess in slots:
+            # Check teacher overlap
+            for tid in sess['teachers']:
+                if tid in slot_teachers:
+                    issues.append(f"Teacher {tid} has overlapping sessions on {DAYS[day]} period {period+1}")
+                slot_teachers.add(tid)
+                teacher_schedule[tid].append((day, period))
+            
+            # Check student overlap
+            for student in sess['students']:
+                if student in slot_students:
+                    issues.append(f"Student {student} has overlapping sessions on {DAYS[day]} period {period+1}")
+                slot_students.add(student)
+                student_schedule[student].append((day, period))
+            
+            # Count subject hours
+            subject_counts[sess['subject']] += 1
+    
+    # Verify each subject has correct number of hours
+    for sid, count in subject_counts.items():
+        required = subjects[sid][3]  # number_of_hours_per_week
+        if count != required:
+            issues.append(f"Subject {sid} has {count} sessions (requires exactly {required})")
+    
+    # Check each teacher's schedule is feasible
+    for tid, schedule in teacher_schedule.items():
+        daily_counts = defaultdict(int)
+        for day, _ in schedule:
+            daily_counts[day] += 1
+            if daily_counts[day] > PERIODS_PER_DAY:
+                issues.append(f"Teacher {tid} has too many sessions ({daily_counts[day]}) on {DAYS[day]}")
+    
+    # Check each student's schedule is feasible
+    for student, schedule in student_schedule.items():
+        daily_counts = defaultdict(int)
+        for day, _ in schedule:
+            daily_counts[day] += 1
+            if daily_counts[day] > PERIODS_PER_DAY:
+                issues.append(f"Student {student} has too many sessions ({daily_counts[day]}) on {DAYS[day]}")
+    
+    if issues:
+        logger.error("Schedule feasibility check failed:")
+        for issue in issues:
+            logger.error(f"- {issue}")
+        return False
+    
+    logger.info("Schedule feasibility check passed!")
+    return True
+
 if __name__ == '__main__':
     teachers, subjects, students_raw, st_map, stud_map, hb = load_data()
     sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
@@ -816,21 +1036,43 @@ if __name__ == '__main__':
         score = evaluate_schedule(schedule, sessions)
         print(f"\nFound solution with score: {score}")
         
-        # Collect all validation issues
-        all_issues = []
-        all_issues.extend(analyze_schedule_issues(schedule, sessions))
-        all_issues.extend(validate_schedule_completeness(schedule, subjects, sessions))
-        all_issues.extend(validate_teacher_conflicts(schedule))
-        all_issues.extend(validate_student_attendance(schedule, sessions))
+        # Add feasibility check before validation
+        if not check_schedule_feasibility(schedule, sessions, subjects):
+            print("\nWARNING: Generated schedule is not feasible!")
         
-        if all_issues:
-            print("\nSchedule Issues Found:")
-            for issue in sorted(set(all_issues)):  # Remove duplicates and sort
-                print(f"- {issue}")
+        # Perform comprehensive validation
+        validation_issues = verify_schedule_constraints(schedule, sessions, subjects)
+        
+        has_issues = any(len(issues) > 0 for issues in validation_issues.values())
+        if has_issues:
+            print("\nSchedule Validation Results:")
+            
+            if validation_issues['teacher_conflicts']:
+                print("\nTeacher Conflicts:")
+                for issue in validation_issues['teacher_conflicts']:
+                    print(f"- {issue}")
+                    
+            if validation_issues['student_conflicts']:
+                print("\nStudent Conflicts:")
+                for issue in validation_issues['student_conflicts']:
+                    print(f"- {issue}")
+                    
+            if validation_issues['subject_requirements']:
+                print("\nSubject Requirement Issues:")
+                for issue in validation_issues['subject_requirements']:
+                    print(f"- {issue}")
+                    
+            if validation_issues['unscheduled']:
+                print("\nUnscheduled Sessions:")
+                for issue in validation_issues['unscheduled']:
+                    print(f"- {issue}")
         else:
-            print("\nNo issues found - schedule is valid!")
+            print("\nValidation successful! All constraints are satisfied:")
+            print(f"- All teachers can teach their classes without conflicts")
+            print(f"- All students can attend their classes without conflicts")
+            print(f"- All subjects meet their weekly requirements")
         
-        # Print schedule in readable format with fixed string conversion
+        # Print schedule in readable format
         print("\nGenerated Schedule:")
         for day_idx, day in enumerate(DAYS):
             print(f"\n=== {day.upper()} ===")
