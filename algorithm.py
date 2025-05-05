@@ -412,20 +412,40 @@ def find_best_slot_strict(sess, schedule, teacher_schedule, subject_daily,
 
 def calculate_strict_score(sess, key, slot, schedule, subject_daily,
                          student_subject_sessions, subject_requirements):
-    """Calculate slot score with strict requirement checking"""
+    """Calculate slot score with strict requirement checking and preference for early periods"""
     score = 0
     day = slot // PERIODS_PER_DAY
     period = slot % PERIODS_PER_DAY
     
-    # Penalize periods at start/end of day
-    score += abs(period - PERIODS_PER_DAY//2) * 10
+    # Strong preference for earlier periods - exponential penalty for later periods
+    score += period * period * 20  # Quadratic penalty for later periods
     
-    # Distribute across days
+    # Small penalty for using later days to balance across week
     score += day * 5
     
+    # Check how many other sessions are in adjacent periods
+    adjacent_periods = [(day, max(0, period-1)), (day, min(PERIODS_PER_DAY-1, period+1))]
+    for adj_day, adj_period in adjacent_periods:
+        adj_key = (adj_day, adj_period)
+        if adj_key in schedule and schedule[adj_key]:
+            # Slight preference for continuous blocks
+            score -= 5
+    
+    # Try to keep subjects together
+    if period > 0:
+        prev_key = (day, period-1)
+        if prev_key in schedule:
+            for prev_sess in schedule[prev_key]:
+                if prev_sess['subject'] == sess['subject']:
+                    # Bonus for keeping same subject in consecutive periods
+                    score -= 15
+    
     # Prefer slots where students have fewer sessions
+    student_slot_count = 0
     for student in sess['students']:
-        score += sum(student_subject_sessions[student].values()) * 2
+        if student in student_subject_sessions:
+            student_slot_count += sum(student_subject_sessions[student].values())
+    score += student_slot_count * 2
     
     return score
 
