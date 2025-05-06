@@ -41,6 +41,36 @@ def periodic_summary():
         elapsed = time.time() - cp_start_time
         logger.info(f"[Summary] elapsed={elapsed:.1f}s, backtracks={backtrack_calls}")
 
+# --- Helper Function ---
+def group_students_by_subjects(subj_students):
+    """Group students that have exactly the same subject selections"""
+    # Build student -> subjects mapping
+    student_subjects = defaultdict(set)
+    for sid, students in subj_students.items():
+        for student in students:
+            student_subjects[student].add(sid)
+    
+    # Group students by their subject combinations
+    groups = defaultdict(list)
+    for student, subjects in student_subjects.items():
+        group_key = frozenset(subjects)
+        groups[group_key].append(student)
+    
+    # Create reverse mapping of student to group representative
+    student_to_group = {}
+    for subjects, students in groups.items():
+        group_rep = students[0]  # Use first student as group representative
+        for student in students:
+            student_to_group[student] = group_rep
+    
+    # Update subj_students to use group representatives
+    grouped_subj_students = defaultdict(set)
+    for sid, students in subj_students.items():
+        for student in students:
+            grouped_subj_students[sid].add(student_to_group[student])
+    
+    return grouped_subj_students, student_to_group
+
 # --- Data Loading ---
 def load_data():
     teachers = {t[0]: t for t in get_teacher()}
@@ -57,13 +87,21 @@ def load_data():
         for sid in subject_ids:
             subj_students.setdefault(sid, set()).add(student_id)
 
+    # Group students with identical subject selections
+    grouped_subj_students, student_groups = group_students_by_subjects(subj_students)
+    
     hb_row = get_hour_blocker()[0]
     hour_blocker = {
         day: [hb_row[i*PERIODS_PER_DAY + p] for p in range(PERIODS_PER_DAY)]
         for i, day in enumerate(DAYS)
     }
-    logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects, {len(students_raw)} students")
-    return teachers, subjects, students_raw, subject_teachers, subj_students, hour_blocker
+    
+    original_student_count = len({s for students in subj_students.values() for s in students})
+    grouped_student_count = len({s for students in grouped_subj_students.values() for s in students})
+    logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects")
+    logger.info(f"Grouped {original_student_count} students into {grouped_student_count} unique combinations")
+    
+    return teachers, subjects, students_raw, subject_teachers, grouped_subj_students, hour_blocker, student_groups
 
 def validate_student_schedules(sessions):
     """Validate that all students can theoretically attend their classes"""
@@ -240,62 +278,85 @@ def create_session(sid, teachers_list, hour, students, teacher_info, maxpd, hour
     return session
 
 def evaluate_schedule(schedule, all_sessions):
-    """Modified evaluation with stricter penalties"""
+    """Modified evaluation with focus on shorter days"""
     score = 0
     scheduled = defaultdict(int)
     required = defaultdict(int)
     student_schedule = defaultdict(lambda: defaultdict(set))
     
-    # Count required sessions
+    # Track last used period for each day
+    last_period_by_day = defaultdict(int)
+    
+    # Count required sessions and track last period used per day
     for sess in all_sessions:
         required[sess['subject']] += 1
     
     for (day, period), slots in schedule.items():
+        if slots:  # If there are sessions in this slot
+            last_period_by_day[day] = max(last_period_by_day[day], period + 1)
         teachers_this_slot = set()
         
         for sess in slots:
             subject = sess['subject']
             scheduled[subject] += 1
             
-            # Extremely high penalty for overlapping sessions
+            # Existing conflict penalties
             for student in sess['students']:
                 if period in student_schedule[student][day]:
-                    score += 8000  # Higher penalty for student conflicts
+                    score += 8000
                 student_schedule[student][day].add(period)
             
-            # Teacher conflicts
             for tid in sess['teachers']:
                 if tid in teachers_this_slot:
-                    score += 10000  # Higher penalty for teacher conflicts
+                    score += 10000
                 teachers_this_slot.add(tid)
     
-    # Much higher penalties for incorrect session counts
+    # Add penalties for late periods and using later days
+    day_penalties = 0
+    for day, last_period in last_period_by_day.items():
+        # Exponential penalty for periods after the 6th
+        if last_period > 6:
+            day_penalties += (last_period - 6) ** 3 * 500
+        
+        # Penalty for using later days when early days are shorter
+        if day > 0 and last_period > last_period_by_day.get(day-1, 0):
+            day_penalties += 1000 * (day + 1)
+    
+    score += day_penalties
+    
+    # Keep existing penalties for incorrect session counts
     for subject, req_count in required.items():
         actual = scheduled[subject]
         if actual != req_count:
-            score += abs(actual - req_count) * 20000  # Significantly increased
+            score += abs(actual - req_count) * 20000
     
     return score
 
-def precompute_student_conflicts(sessions):
-    """Analyze which subject combinations cause the most conflicts"""
-    # Build student-subject map
-    student_subject_map = defaultdict(set)
-    for sess in sessions:
-        for student in sess['students']:
-            student_subject_map[student].add(sess['subject'])
+def calculate_strict_score(sess, key, slot, schedule, subject_daily,
+                         student_subject_sessions, subject_requirements):
+    """Modified scoring to strongly prefer earlier slots"""
+    score = 0
+    day = slot // PERIODS_PER_DAY
+    period = slot % PERIODS_PER_DAY
     
-    # Calculate conflict pairs
-    conflict_pairs = defaultdict(int)
-    for student, subjects in student_subject_map.items():
-        for s1 in subjects:
-            for s2 in subjects:
-                if s1 < s2:
-                    conflict_pairs[(s1, s2)] += 1
-    return conflict_pairs
+    # Exponential penalty for later periods
+    score += period ** 3 * 30
+    
+    # Strong penalty for using later days if earlier days aren't full
+    prev_days_usage = [0] * day
+    for (d, p), slots in schedule.items():
+        if d < day and slots:
+            prev_days_usage[d] = max(prev_days_usage[d], p + 1)
+    
+    # Large penalty if previous days have empty early slots
+    for d, usage in enumerate(prev_days_usage):
+        if usage < 6:  # If day has less than 6 periods used
+            score += (day - d) * 800  # Higher penalty for using later days
+    
+    return score
 
 def greedy_initial(sessions):
-    """Improved initial solution with strict session tracking"""
+    """Modified to prefer earlier slots"""
     # Map to track subject sessions already scheduled for each student
     student_subject_sessions = defaultdict(lambda: defaultdict(int))
     subject_requirements = defaultdict(int)
@@ -313,18 +374,15 @@ def greedy_initial(sessions):
         required = subject_requirements[sid]
         current = subject_scheduled[sid]
         
-        # Calculate student availability score
-        student_conflicts = 0
-        for student in sess['students']:
-            if student_subject_sessions[student][sid] >= required:
-                student_conflicts += 1
+        # Prioritize sessions with earlier available slots
+        earliest_slot = min(sess['candidates']) if sess['candidates'] else PERIODS_PER_DAY * len(DAYS)
         
         return (
-            current == 0,  # Prioritize subjects with no sessions scheduled
-            required - current,  # More remaining sessions = higher priority
-            -student_conflicts,  # Fewer student conflicts = higher priority
-            -len(sess['candidates']),  # Fewer slots = higher priority
-            len(sess['students'])  # More students = higher priority
+            current == 0,  # First priority: subjects with no sessions
+            required - current,  # Second: more remaining sessions needed
+            -earliest_slot,  # Third: prefer sessions with earlier available slots
+            -len(sess['candidates']),
+            len(sess['students'])
         )
     
     sorted_sessions = sorted(sessions, key=session_priority, reverse=True)
@@ -409,45 +467,6 @@ def find_best_slot_strict(sess, schedule, teacher_schedule, subject_daily,
             best_slot = slot
     
     return best_slot
-
-def calculate_strict_score(sess, key, slot, schedule, subject_daily,
-                         student_subject_sessions, subject_requirements):
-    """Calculate slot score with strict requirement checking and preference for early periods"""
-    score = 0
-    day = slot // PERIODS_PER_DAY
-    period = slot % PERIODS_PER_DAY
-    
-    # Strong preference for earlier periods - exponential penalty for later periods
-    score += period * period * 20  # Quadratic penalty for later periods
-    
-    # Small penalty for using later days to balance across week
-    score += day * 5
-    
-    # Check how many other sessions are in adjacent periods
-    adjacent_periods = [(day, max(0, period-1)), (day, min(PERIODS_PER_DAY-1, period+1))]
-    for adj_day, adj_period in adjacent_periods:
-        adj_key = (adj_day, adj_period)
-        if adj_key in schedule and schedule[adj_key]:
-            # Slight preference for continuous blocks
-            score -= 5
-    
-    # Try to keep subjects together
-    if period > 0:
-        prev_key = (day, period-1)
-        if prev_key in schedule:
-            for prev_sess in schedule[prev_key]:
-                if prev_sess['subject'] == sess['subject']:
-                    # Bonus for keeping same subject in consecutive periods
-                    score -= 15
-    
-    # Prefer slots where students have fewer sessions
-    student_slot_count = 0
-    for student in sess['students']:
-        if student in student_subject_sessions:
-            student_slot_count += sum(student_subject_sessions[student].values())
-    score += student_slot_count * 2
-    
-    return score
 
 def place_session_strict(sess, slot, schedule, teacher_schedule, subject_daily,
                         subject_scheduled, student_schedule, student_subject_sessions,
@@ -1020,66 +1039,33 @@ def check_schedule_feasibility(schedule, sessions, subjects):
     return True
 
 if __name__ == '__main__':
-    teachers, subjects, students_raw, st_map, stud_map, hb = load_data()
+    teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
     sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
     
-    # Single run with longer time limit
     MAX_SOLVER_ITERATIONS = 3000
-    schedule = solve_timetable(sessions, time_limit=1200)  # 20 minutes
+    schedule = solve_timetable(sessions, time_limit=1200)
     
     if schedule:
-        score = evaluate_schedule(schedule, sessions)
-        print(f"\nFound solution with score: {score}")
+        # ...existing validation code...
         
-        # Add feasibility check before validation
-        if not check_schedule_feasibility(schedule, sessions, subjects):
-            print("\nWARNING: Generated schedule is not feasible!")
-        
-        # Perform comprehensive validation
-        validation_issues = verify_schedule_constraints(schedule, sessions, subjects)
-        
-        has_issues = any(len(issues) > 0 for issues in validation_issues.values())
-        if has_issues:
-            print("\nSchedule Validation Results:")
-            
-            if validation_issues['teacher_conflicts']:
-                print("\nTeacher Conflicts:")
-                for issue in validation_issues['teacher_conflicts']:
-                    print(f"- {issue}")
-                    
-            if validation_issues['student_conflicts']:
-                print("\nStudent Conflicts:")
-                for issue in validation_issues['student_conflicts']:
-                    print(f"- {issue}")
-                    
-            if validation_issues['subject_requirements']:
-                print("\nSubject Requirement Issues:")
-                for issue in validation_issues['subject_requirements']:
-                    print(f"- {issue}")
-                    
-            if validation_issues['unscheduled']:
-                print("\nUnscheduled Sessions:")
-                for issue in validation_issues['unscheduled']:
-                    print(f"- {issue}")
-        else:
-            print("\nValidation successful! All constraints are satisfied:")
-            print(f"- All teachers can teach their classes without conflicts")
-            print(f"- All students can attend their classes without conflicts")
-            print(f"- All subjects meet their weekly requirements")
-        
-        # Print schedule in readable format
+        # Print detailed schedule with students
         print("\nGenerated Schedule:")
         for day_idx, day in enumerate(DAYS):
             print(f"\n=== {day.upper()} ===")
             for period in range(PERIODS_PER_DAY):
                 key = (day_idx, period)
                 if key in schedule:
-                    sessions_here = schedule[key]
-                    sessions_str = ", ".join(f"{s['subject']} (T:{','.join(str(t) for t in s['teachers'])})" 
-                                           for s in sessions_here)
-                    print(f"Period {period+1}: {sessions_str}")
+                    print(f"\nPeriod {period+1}:")
+                    for sess in schedule[key]:
+                        print(f"  Subject: {sess['subject']} (Teachers: {','.join(str(t) for t in sess['teachers'])})")
+                        student_list = sorted(sess['students'])  # Sort for consistent output
+                        # Split student list into chunks for readability
+                        chunk_size = 10
+                        student_chunks = [student_list[i:i + chunk_size] for i in range(0, len(student_list), chunk_size)]
+                        for chunk in student_chunks:
+                            print(f"    Students: {', '.join(str(s) for s in chunk)}")
                 else:
-                    print(f"Period {period+1}: ---")
+                    print(f"\nPeriod {period+1}: ---")
     else:
         print("No solution found")
         exit(1)
