@@ -676,8 +676,44 @@ def solve_timetable(sessions, time_limit=600):
     if shared_best_score.value == float('inf'):
         logger.warning("No solution found, returning initial solution")
         return initial_schedule
-        
-    return dict(shared_best_schedule)
+
+    final_schedule = dict(shared_best_schedule)
+    
+    # Run diagnostics on final schedule
+    logger.info("Running final schedule diagnostics...")
+    
+    # Check for teacher conflicts
+    teacher_issues = validate_teacher_conflicts(final_schedule)
+    if teacher_issues:
+        logger.error("Found teacher conflicts:")
+        for issue in teacher_issues:
+            logger.error(f"  - {issue}")
+    else:
+        logger.info("No teacher conflicts found")
+    
+    # Check for student attendance issues
+    student_issues = validate_student_attendance(final_schedule, sessions)
+    if student_issues:
+        logger.error("Found student scheduling issues:")
+        for issue in student_issues:
+            logger.error(f"  - {issue}")
+    else:
+        logger.info("No student scheduling issues found")
+    
+    # Check schedule completeness
+    completeness_issues = validate_schedule_completeness(final_schedule, subjects, sessions)
+    if completeness_issues:
+        logger.error("Found schedule completeness issues:")
+        for issue in completeness_issues:
+            logger.error(f"  - {issue}")
+    else:
+        logger.info("All required sessions scheduled correctly")
+    
+    # Run comprehensive constraint check
+    if check_schedule_feasibility(final_schedule, sessions, subjects):
+        logger.info("Final schedule passed all feasibility checks")
+    
+    return final_schedule
 
 # --- Helper Function for Student Sessions ---
 def get_student_sessions(sessions):
