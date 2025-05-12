@@ -156,13 +156,17 @@ def validate_input_data(teachers, subjects, subject_teachers, subj_students):
     
     # Get group counts per subject
     for sid, subj in subjects.items():
-        subject_group_counts[sid] = subj[2]  # group_number from subjects table
+        # Skip subjects marked as parallel (parallel_subject_groups = 1)
+        if subj[7] != 1:  # Check if not a parallel subject
+            subject_group_counts[sid] = subj[2]  # group_number from subjects table
     
-    # Compare teachers vs groups
+    # Compare teachers vs groups (only for non-parallel subjects)
     for sid, teacher_count in subject_teacher_counts.items():
-        group_count = subject_group_counts.get(sid, 0)
-        if teacher_count > group_count:
-            errors.append(f"Subject {sid} has {teacher_count} teachers but only {group_count} groups")
+        # Only check if subject is in group_counts (non-parallel subjects)
+        if sid in subject_group_counts:
+            group_count = subject_group_counts[sid]
+            if teacher_count > group_count:
+                errors.append(f"Subject {sid} has {teacher_count} teachers but only {group_count} groups")
     
     # Check subject hours vs available slots
     for st in subject_teachers:
@@ -1113,10 +1117,10 @@ def check_schedule_feasibility(schedule, sessions, subjects):
     return True
 
 def format_schedule_output(schedule, subjects, teachers, students_dict):
-    """Format schedule into JSON-friendly structure"""
+    """Format schedule into JSON-friendly structure with split parallel groups"""
     
     # Convert subjects tuple to dict for easier lookup
-    subject_dict = {s[0]: {'id': s[0], 'name': s[1]} for s in subjects.values()}
+    subject_dict = {s[0]: {'id': s[0], 'name': s[1], 'group_count': s[2]} for s in subjects.values()}
     
     # Convert teachers tuple to dict for easier lookup  
     teacher_dict = {t[0]: {'id': t[0], 'name': f"{t[1]} {t[2] or ''} {t[3]}".strip()} for t in teachers.values()}
@@ -1138,21 +1142,62 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
         formatted['days'][str(day)][str(period)] = []
         
         for sess in sessions:
-            formatted_session = {
-                'id': sess['id'],
-                'subject_id': sess['subject'],
-                'subject_name': subject_dict[sess['subject']]['name'],
-                'teachers': [{
-                    'id': tid, 
-                    'name': teacher_dict[tid]['name']
-                } for tid in sess['teachers']],
-                'students': [{
-                    'id': sid,
-                    'name': students_dict[sid]['name']
-                } for sid in sess['students']],
-                'group': sess['group']
-            }
-            formatted['days'][str(day)][str(period)].append(formatted_session)
+            subject_id = sess['subject']
+            subject_info = subject_dict[subject_id]
+            
+            if len(sess['teachers']) > 1:  # This is a parallel subject
+                required_groups = subject_info['group_count']
+                student_count = len(sess['students'])
+                students_per_group = math.ceil(student_count / required_groups)
+                
+                # Split students into groups
+                student_groups = []
+                for i in range(0, student_count, students_per_group):
+                    group = sess['students'][i:i + students_per_group]
+                    student_groups.append(group)
+                
+                # Pad with empty groups if needed
+                while len(student_groups) < required_groups:
+                    student_groups.append([])
+                
+                # Create a session for each group
+                for group_idx, (teacher_id, student_group) in enumerate(zip(sess['teachers'], student_groups)):
+                    formatted_session = {
+                        'id': f"{sess['id']}_G{group_idx + 1}",
+                        'subject_id': subject_id,
+                        'subject_name': subject_info['name'],
+                        'teachers': [{
+                            'id': teacher_id,
+                            'name': teacher_dict[teacher_id]['name']
+                        }],
+                        'students': [{
+                            'id': sid,
+                            'name': students_dict[sid]['name']
+                        } for sid in student_group],
+                        'group': group_idx + 1,
+                        'is_parallel': True,
+                        'parallel_group_id': sess['id']
+                    }
+                    formatted['days'][str(day)][str(period)].append(formatted_session)
+            else:
+                # Regular non-parallel session
+                formatted_session = {
+                    'id': sess['id'],
+                    'subject_id': subject_id,
+                    'subject_name': subject_info['name'],
+                    'teachers': [{
+                        'id': tid, 
+                        'name': teacher_dict[tid]['name']
+                    } for tid in sess['teachers']],
+                    'students': [{
+                        'id': sid,
+                        'name': students_dict[sid]['name']
+                    } for sid in sess['students']],
+                    'group': sess['group'],
+                    'is_parallel': False,
+                    'parallel_group_id': None
+                }
+                formatted['days'][str(day)][str(period)].append(formatted_session)
 
     return formatted
 
