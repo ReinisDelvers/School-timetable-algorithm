@@ -33,16 +33,6 @@ class MainGUI:
         
         self.window.title("School timetable algorithm")
 
-        self.menubar = tk.Menu(self.window)
-
-        self.filemenu = tk.Menu(self.menubar, tearoff=0)
-        self.filemenu.add_command(label="Close", command=exit)        
-        self.filemenu.add_separator()
-
-        self.menubar.add_cascade(menu=self.filemenu, label="File")
-
-        self.window.config(menu=self.menubar)
-
         self.frame = tk.Frame(self.window)
         
         self.frame.columnconfigure(0, weight=1)
