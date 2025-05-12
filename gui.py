@@ -76,6 +76,8 @@ class MainGUI:
 
         self.frame.pack(fill="x")
 
+        self.window.mainloop()
+
     #SUBJECT
     def subject(self):
         wind = tk.Toplevel(self.window)  # creates a new window
@@ -869,7 +871,6 @@ class MainGUI:
 
         def change_list():
             nonlocal subject_student_list
-            #this
             subject_student_list = get_subject_student()
             subject_student_list = [list(item) for item in subject_student_list]
             subject_list = get_subject()
@@ -888,7 +889,6 @@ class MainGUI:
                             subject_names.append(subject_list[c][1])
                 subject_student_list[i][2] = subject_names
                 subject_names = []
-            #to this
             subject_student_listbox.delete(0, END)
             subject_listbox.delete(0, END)
             student_listbox.delete(0, END)
@@ -1721,6 +1721,5 @@ class MainGUI:
         for i in range(11):  # 0 for header + 10 hours
             timetable_frame.grid_rowconfigure(i, weight=1)
 
-if __name__ == '__main__':
-    app = MainGUI()
-    app.window.mainloop()
+MainGUI()
+
