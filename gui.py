@@ -1543,6 +1543,10 @@ class MainGUI:
         wind.geometry("1280x800")
         wind.grab_set()
 
+        # Initialize algorithm control variables
+        algorithm_thread = None
+        is_running = False
+
         # Main frame
         frame = tk.Frame(wind)
         frame.pack(fill="both", expand=True)
@@ -1551,13 +1555,48 @@ class MainGUI:
         control_frame = tk.Frame(frame)
         control_frame.pack(fill="x", padx=5, pady=5)
 
+        # Create metadata label
+        meta_label = tk.Label(control_frame, font=("Arial", 10))
+        meta_label.pack(side=tk.RIGHT, padx=5)
+
         # Timetable frame
         timetable_frame = tk.Frame(frame)
         timetable_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # Algorithm thread reference
-        algorithm_thread = None
-        is_running = False
+        # Dictionary to track expanded/collapsed state of cells
+        expanded_cells = {}
+        session_headers = {}
+
+        def toggle_cell_view(cell, students_list, session_id, button):
+            """Toggle between compact and expanded view for a cell"""
+            # Get current state
+            is_expanded = expanded_cells.get(session_id, False)
+            
+            # Enable editing
+            cell.config(state='normal')
+            
+            # Find and remove old button
+            cell.delete(1.0, tk.END)
+            
+            # Get session header (first 2 lines from saved headers)
+            header = session_headers.get(session_id, ['', ''])
+            
+            # Insert header
+            cell.insert(tk.END, header[0] + '\n')  # Subject name
+            cell.insert(tk.END, header[1] + '\n')  # Teacher name
+            
+            if not is_expanded:
+                # Show expanded view
+                cell.insert(tk.END, "Students:\n")
+                for student in students_list:
+                    cell.insert(tk.END, f"- {student['name']}\n")
+                button.config(text="Collapse")
+            else:
+                # Show compact view
+                button.config(text=f"Show {len(students_list)} students")
+            
+            cell.config(state='disabled')
+            expanded_cells[session_id] = not is_expanded
 
         def clear_timetable():
             """Clear all text widgets in the timetable"""
@@ -1581,56 +1620,6 @@ class MainGUI:
                     text = tk.Text(timetable_frame, height=3, width=40, font=("Arial", 10))
                     text.grid(row=hour+1, column=day+1, padx=2, pady=2, sticky="nsew")
                     text.config(state='disabled')
-                    
-                    # Create tooltip for this cell
-                    tooltip = tk.Toplevel(wind)
-                    tooltip.withdraw()
-                    tooltip.overrideredirect(True)
-                    tooltip_label = tk.Label(tooltip, text="", justify=tk.LEFT, 
-                                           relief=tk.SOLID, borderwidth=1,
-                                           font=("Arial", 10), bg="lightyellow")
-                    tooltip_label.pack()
-                    
-                    # Bind mouse events for tooltip
-                    text.bind("<Enter>", lambda e, t=tooltip, cell=text: show_tooltip(e, t, cell))
-                    text.bind("<Leave>", lambda e, t=tooltip: hide_tooltip(e, t))
-                    text.tooltip = tooltip  # Save reference to prevent garbage collection
-
-        def show_tooltip(event, tooltip, cell):
-            """Show detailed info in tooltip"""
-            # Get the full text content
-            content = cell.get("1.0", tk.END).strip()
-            if content and content != "---":
-                tooltip.title("Session Details")
-                tooltip_label = tooltip.winfo_children()[0]
-                tooltip_label.config(text=content)
-                
-                # Position tooltip near mouse
-                x = event.widget.winfo_rootx() + event.x + 10
-                y = event.widget.winfo_rooty() + event.y + 10
-                tooltip.geometry(f"+{x}+{y}")
-                tooltip.deiconify()
-
-        def hide_tooltip(event, tooltip):
-            """Hide the tooltip"""
-            tooltip.withdraw()
-
-        def format_session_info(sess):
-            """Create compact session display with hover details"""
-            compact = f"{sess['subject_name']}\n"
-            compact += f"T: {', '.join(t['name'].split()[0] for t in sess['teachers'])}\n"
-            compact += f"S: {len(sess['students'])} students"
-            
-            # Full details for tooltip
-            details = f"{sess['subject_name']}\n"
-            details += "Teachers:\n"
-            for t in sess['teachers']:
-                details += f"- {t['name']}\n"
-            details += f"\nStudents ({len(sess['students'])}):\n"
-            for s in sess['students']:
-                details += f"- {s['name']}\n"
-            
-            return compact, details
 
         def display_schedule():
             try:
@@ -1641,11 +1630,8 @@ class MainGUI:
                 text_widgets = [w for w in timetable_frame.winfo_children() if isinstance(w, tk.Text)]
                 text_widgets.sort(key=lambda w: (int(str(w.grid_info()['row'])), int(str(w.grid_info()['column']))))
                 
-                # Display metadata
-                meta_label = tk.Label(control_frame, 
-                                    text=f"Total sessions: {schedule_data['metadata']['total_sessions']}", 
-                                    font=("Arial", 10))
-                meta_label.pack(side=tk.RIGHT, padx=5)
+                # Update metadata label
+                meta_label.config(text=f"Total sessions: {schedule_data['metadata']['total_sessions']}")
                 
                 # Display schedule
                 for day_idx in range(schedule_data['metadata']['num_days']):
@@ -1656,17 +1642,48 @@ class MainGUI:
                             text_widget = text_widgets[widget_index]
                             text_widget.config(state='normal')
                             text_widget.delete(1.0, tk.END)
-                            text_widget.tag_config("compact", spacing1=2)
                             
                             sessions = day_schedule.get(str(period), [])
                             if sessions:
                                 for i, sess in enumerate(sessions):
                                     if i > 0:
                                         text_widget.insert(tk.END, "\n" + "-"*20 + "\n")
-                                    compact, details = format_session_info(sess)
-                                    text_widget.insert(tk.END, compact, "compact")
-                                    # Store details for tooltip
-                                    text_widget.details = details
+                                    
+                                    session_id = f"{sess['subject_name']}_{period}_{day_idx}_{i}"
+                                    
+                                    # Create button frame
+                                    button_frame = tk.Frame(text_widget)
+                                    
+                                    # Create and configure toggle button
+                                    toggle_btn = tk.Button(
+                                        button_frame,
+                                        text=f"Show {len(sess['students'])} students",
+                                        font=("Arial", 9)
+                                    )
+                                    toggle_btn.pack(pady=2)
+                                    
+                                    # Save header info for this session
+                                    header_text = [
+                                        f"{sess['subject_name']}",
+                                        f"Teacher: {sess['teachers'][0]['name']}"
+                                    ]
+                                    session_headers[session_id] = header_text
+                                    
+                                    # Insert basic session info
+                                    text_widget.insert(tk.END, f"{header_text[0]}\n")
+                                    text_widget.insert(tk.END, f"{header_text[1]}\n")
+                                    
+                                    # Insert button
+                                    text_widget.window_create(tk.END, window=button_frame)
+                                    text_widget.insert(tk.END, "\n")
+                                    
+                                    # Configure button command
+                                    toggle_btn.configure(
+                                        command=lambda w=text_widget, 
+                                                       s=sess['students'],
+                                                       sid=session_id,
+                                                       b=toggle_btn: toggle_cell_view(w, s, sid, b)
+                                    )
                             else:
                                 text_widget.insert(tk.END, "---")
                             
@@ -1690,12 +1707,16 @@ class MainGUI:
                 
                 def run_algorithm():
                     try:
-                        import algorithm
+                        # Import algorithm functions directly instead of the whole module
+                        from algorithm import (
+                            load_data, build_sessions, solve_timetable,
+                            format_schedule_output, logger
+                        )
+                        
                         logging.basicConfig(level=logging.INFO)
-                        logger = logging.getLogger(__name__)
                         
                         logger.info("Loading data...")
-                        teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = algorithm.load_data()
+                        teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
                         
                         if not teachers:
                             raise ValueError("No teachers found in database")
@@ -1707,7 +1728,7 @@ class MainGUI:
                         logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects, {len(students_raw)} students")
                         
                         logger.info("Building sessions...")
-                        sessions = algorithm.build_sessions(teachers, subjects, st_map, stud_map, hb)
+                        sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
                         
                         if not sessions:
                             raise ValueError("Failed to create any valid sessions - check teacher/subject assignments")
@@ -1715,11 +1736,11 @@ class MainGUI:
                         logger.info(f"Created {len(sessions)} sessions")
                         
                         logger.info("Starting solver...")
-                        schedule, students_dict = algorithm.solve_timetable(sessions, time_limit=1200)
+                        schedule, students_dict = solve_timetable(sessions, time_limit=1200)
                         
                         if schedule:
                             logger.info("Found valid schedule, formatting output...")
-                            formatted_schedule = algorithm.format_schedule_output(schedule, subjects, teachers, students_dict)
+                            formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
                             
                             with open('schedule_output.json', 'w') as f:
                                 json.dump(formatted_schedule, f, indent=2)
@@ -1772,4 +1793,5 @@ class MainGUI:
             timetable_frame.grid_rowconfigure(i, weight=1)
 
 MainGUI()
+
 
