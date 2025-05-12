@@ -1559,6 +1559,14 @@ class MainGUI:
         algorithm_thread = None
         is_running = False
 
+        def clear_timetable():
+            """Clear all text widgets in the timetable"""
+            for widget in timetable_frame.winfo_children():
+                if isinstance(widget, tk.Text):
+                    widget.config(state='normal')
+                    widget.delete(1.0, tk.END)
+                    widget.config(state='disabled')
+
         def create_timetable():
             # Create headers
             tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold")).grid(row=0, column=0, **options)
@@ -1570,20 +1578,62 @@ class MainGUI:
             for hour in range(10):
                 tk.Label(timetable_frame, text=str(hour+1), font=("Arial", 12)).grid(row=hour+1, column=0, **options)
                 for day in range(4):
-                    text = tk.Text(timetable_frame, height=5, width=30, font=("Arial", 10))
+                    text = tk.Text(timetable_frame, height=3, width=40, font=("Arial", 10))
                     text.grid(row=hour+1, column=day+1, padx=2, pady=2, sticky="nsew")
                     text.config(state='disabled')
+                    
+                    # Create tooltip for this cell
+                    tooltip = tk.Toplevel(wind)
+                    tooltip.withdraw()
+                    tooltip.overrideredirect(True)
+                    tooltip_label = tk.Label(tooltip, text="", justify=tk.LEFT, 
+                                           relief=tk.SOLID, borderwidth=1,
+                                           font=("Arial", 10), bg="lightyellow")
+                    tooltip_label.pack()
+                    
+                    # Bind mouse events for tooltip
+                    text.bind("<Enter>", lambda e, t=tooltip, cell=text: show_tooltip(e, t, cell))
+                    text.bind("<Leave>", lambda e, t=tooltip: hide_tooltip(e, t))
+                    text.tooltip = tooltip  # Save reference to prevent garbage collection
 
-        def clear_timetable():
-            for widget in timetable_frame.winfo_children():
-                if isinstance(widget, tk.Text):
-                    widget.config(state='normal')
-                    widget.delete(1.0, tk.END)
-                    widget.config(state='disabled')
+        def show_tooltip(event, tooltip, cell):
+            """Show detailed info in tooltip"""
+            # Get the full text content
+            content = cell.get("1.0", tk.END).strip()
+            if content and content != "---":
+                tooltip.title("Session Details")
+                tooltip_label = tooltip.winfo_children()[0]
+                tooltip_label.config(text=content)
+                
+                # Position tooltip near mouse
+                x = event.widget.winfo_rootx() + event.x + 10
+                y = event.widget.winfo_rooty() + event.y + 10
+                tooltip.geometry(f"+{x}+{y}")
+                tooltip.deiconify()
+
+        def hide_tooltip(event, tooltip):
+            """Hide the tooltip"""
+            tooltip.withdraw()
+
+        def format_session_info(sess):
+            """Create compact session display with hover details"""
+            compact = f"{sess['subject_name']}\n"
+            compact += f"T: {', '.join(t['name'].split()[0] for t in sess['teachers'])}\n"
+            compact += f"S: {len(sess['students'])} students"
+            
+            # Full details for tooltip
+            details = f"{sess['subject_name']}\n"
+            details += "Teachers:\n"
+            for t in sess['teachers']:
+                details += f"- {t['name']}\n"
+            details += f"\nStudents ({len(sess['students'])}):\n"
+            for s in sess['students']:
+                details += f"- {s['name']}\n"
+            
+            return compact, details
 
         def display_schedule():
             try:
-                # Read the JSON file
                 with open('schedule_output.json', 'r') as f:
                     schedule_data = json.load(f)
                 
@@ -1606,22 +1656,22 @@ class MainGUI:
                             text_widget = text_widgets[widget_index]
                             text_widget.config(state='normal')
                             text_widget.delete(1.0, tk.END)
+                            text_widget.tag_config("compact", spacing1=2)
                             
                             sessions = day_schedule.get(str(period), [])
                             if sessions:
-                                for sess in sessions:
-                                    text_widget.insert(tk.END, f"{sess['subject_name']}\n")
-                                    teachers = [t['name'] for t in sess['teachers']]
-                                    text_widget.insert(tk.END, f"Teachers: {', '.join(teachers)}\n")
-                                    text_widget.insert(tk.END, "Students:\n")
-                                    for student in sess['students']:
-                                        text_widget.insert(tk.END, f"- {student['name']}\n")
-                                    text_widget.insert(tk.END, "-" * 20 + "\n")
+                                for i, sess in enumerate(sessions):
+                                    if i > 0:
+                                        text_widget.insert(tk.END, "\n" + "-"*20 + "\n")
+                                    compact, details = format_session_info(sess)
+                                    text_widget.insert(tk.END, compact, "compact")
+                                    # Store details for tooltip
+                                    text_widget.details = details
                             else:
                                 text_widget.insert(tk.END, "---")
                             
                             text_widget.config(state='disabled')
-                
+                            
             except FileNotFoundError:
                 messagebox.showerror("Error", "Schedule file not found. Run the algorithm first.")
             except json.JSONDecodeError:

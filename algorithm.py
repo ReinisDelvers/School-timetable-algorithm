@@ -145,6 +145,25 @@ def validate_input_data(teachers, subjects, subject_teachers, subj_students):
         if available_days == 0:
             errors.append(f"Teacher {tid} has no available days")
     
+    # Check subject groups vs teacher assignments
+    subject_teacher_counts = defaultdict(int)
+    subject_group_counts = {}
+    
+    # Count teachers per subject
+    for st in subject_teachers:
+        sid, tid = st[1], st[3]
+        subject_teacher_counts[sid] += 1
+    
+    # Get group counts per subject
+    for sid, subj in subjects.items():
+        subject_group_counts[sid] = subj[2]  # group_number from subjects table
+    
+    # Compare teachers vs groups
+    for sid, teacher_count in subject_teacher_counts.items():
+        group_count = subject_group_counts.get(sid, 0)
+        if teacher_count > group_count:
+            errors.append(f"Subject {sid} has {teacher_count} teachers but only {group_count} groups")
+    
     # Check subject hours vs available slots
     for st in subject_teachers:
         sid, tid = st[1], st[3]
