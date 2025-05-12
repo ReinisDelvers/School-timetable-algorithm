@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 # --- Constants ---
 PERIODS_PER_DAY = 10
 DAYS = ["monday", "tuesday", "wednesday", "thursday"]
-MAX_SOLVER_ITERATIONS = 2000  # Maximum iterations
+MAX_SOLVER_ITERATIONS = 20  # Maximum iterations
 IMPROVEMENT_THRESHOLD = 200  # How many iterations without improvement before resetting
 PROGRESS_INTERVAL = 100  # How often to log progress
 
@@ -640,6 +640,21 @@ def solver_process(sessions, shared_best_score, shared_best_schedule, shared_loc
 # --- Solver with Parallel Processing ---
 def solve_timetable(sessions, time_limit=600):
     """Improved solver with parallel processing and partial solution handling"""
+    # Get all unique subject IDs from sessions 
+    subject_ids = {s['subject'] for s in sessions}
+    
+    # Build subject info dict
+    subjects = {}
+    for sid in subject_ids:
+        for s in sessions:
+            if s['subject'] == sid:
+                subjects[sid] = {
+                    'id': sid,
+                    'hours_per_week': sum(1 for x in sessions if x['subject'] == sid),
+                    'max_per_day': s['max_per_day']
+                }
+                break
+
     sessions = sorted(sessions, 
                      key=lambda s: (s['parallel_with'] is not None,
                                   len(s['candidates']),
@@ -700,7 +715,7 @@ def solve_timetable(sessions, time_limit=600):
     else:
         logger.info("No student scheduling issues found")
     
-    # Check schedule completeness
+    # Check schedule completeness using subjects dict we created
     completeness_issues = validate_schedule_completeness(final_schedule, subjects, sessions)
     if completeness_issues:
         logger.error("Found schedule completeness issues:")
@@ -709,11 +724,15 @@ def solve_timetable(sessions, time_limit=600):
     else:
         logger.info("All required sessions scheduled correctly")
     
-    # Run comprehensive constraint check
+    # Run comprehensive constraint check using subjects dict
     if check_schedule_feasibility(final_schedule, sessions, subjects):
         logger.info("Final schedule passed all feasibility checks")
     
-    return final_schedule
+    # Get students data before returning
+    students_raw = get_student()
+    students_dict = {s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()} for s in students_raw}
+    
+    return final_schedule, students_dict
 
 # --- Helper Function for Student Sessions ---
 def get_student_sessions(sessions):
@@ -877,7 +896,7 @@ def validate_schedule_completeness(schedule, subjects, all_sessions):
     # Compare with required hours from subjects table
     issues = []
     for sid, subj in subjects.items():
-        required = subj[3]  # number_of_hours_per_week
+        required = subj['hours_per_week']
         actual = scheduled_counts.get(sid, 0)
         if actual != required:
             issues.append(f"Subject {sid} has {actual} sessions (requires {required})")
@@ -997,7 +1016,7 @@ def verify_schedule_constraints(schedule, sessions, subjects):
     
     # Verify subject requirements are met
     for sid, subj in subjects.items():
-        required = subj[3]  # number_of_hours_per_week
+        required = subj['hours_per_week']
         actual = subject_counts[sid]
         if actual != required:
             issues['subject_requirements'].append(
@@ -1045,7 +1064,7 @@ def check_schedule_feasibility(schedule, sessions, subjects):
     
     # Verify each subject has correct number of hours
     for sid, count in subject_counts.items():
-        required = subjects[sid][3]  # number_of_hours_per_week
+        required = subjects[sid]['hours_per_week']
         if count != required:
             issues.append(f"Subject {sid} has {count} sessions (requires exactly {required})")
     
@@ -1074,34 +1093,73 @@ def check_schedule_feasibility(schedule, sessions, subjects):
     logger.info("Schedule feasibility check passed!")
     return True
 
+def format_schedule_output(schedule, subjects, teachers, students_dict):
+    """Format schedule into JSON-friendly structure"""
+    
+    # Convert subjects tuple to dict for easier lookup
+    subject_dict = {s[0]: {'id': s[0], 'name': s[1]} for s in subjects.values()}
+    
+    # Convert teachers tuple to dict for easier lookup  
+    teacher_dict = {t[0]: {'id': t[0], 'name': f"{t[1]} {t[2] or ''} {t[3]}".strip()} for t in teachers.values()}
+
+    formatted = {
+        'metadata': {
+            'num_days': 4,
+            'periods_per_day': 10,
+            'total_sessions': sum(len(slots) for slots in schedule.values())
+        },
+        'days': {}
+    }
+
+    # Group schedule by days
+    for (day, period), sessions in schedule.items():
+        if str(day) not in formatted['days']:
+            formatted['days'][str(day)] = {}
+            
+        formatted['days'][str(day)][str(period)] = []
+        
+        for sess in sessions:
+            formatted_session = {
+                'id': sess['id'],
+                'subject_id': sess['subject'],
+                'subject_name': subject_dict[sess['subject']]['name'],
+                'teachers': [{
+                    'id': tid, 
+                    'name': teacher_dict[tid]['name']
+                } for tid in sess['teachers']],
+                'students': [{
+                    'id': sid,
+                    'name': students_dict[sid]['name']
+                } for sid in sess['students']],
+                'group': sess['group']
+            }
+            formatted['days'][str(day)][str(period)].append(formatted_session)
+
+    return formatted
+
 if __name__ == '__main__':
     teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
     sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
     
     MAX_SOLVER_ITERATIONS = 3000
-    schedule = solve_timetable(sessions, time_limit=1200)
+    schedule, students_dict = solve_timetable(sessions, time_limit=1200)
     
     if schedule:
-        # ...existing validation code...
+        # Format schedule for output
+        formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
         
-        # Print detailed schedule with students
-        print("\nGenerated Schedule:")
-        for day_idx, day in enumerate(DAYS):
-            print(f"\n=== {day.upper()} ===")
-            for period in range(PERIODS_PER_DAY):
-                key = (day_idx, period)
-                if key in schedule:
-                    print(f"\nPeriod {period+1}:")
-                    for sess in schedule[key]:
-                        print(f"  Subject: {sess['subject']} (Teachers: {','.join(str(t) for t in sess['teachers'])})")
-                        student_list = sorted(sess['students'])  # Sort for consistent output
-                        # Split student list into chunks for readability
-                        chunk_size = 10
-                        student_chunks = [student_list[i:i + chunk_size] for i in range(0, len(student_list), chunk_size)]
-                        for chunk in student_chunks:
-                            print(f"    Students: {', '.join(str(s) for s in chunk)}")
-                else:
-                    print(f"\nPeriod {period+1}: ---")
+        # Print compact summary
+        print("\nSchedule Summary:")
+        print(f"Total sessions scheduled: {formatted_schedule['metadata']['total_sessions']}")
+        print(f"Days: {formatted_schedule['metadata']['num_days']}")
+        print(f"Periods per day: {formatted_schedule['metadata']['periods_per_day']}")
+        
+        # Return formatted schedule for other programs to use
+        import json
+        with open('schedule_output.json', 'w') as f:
+            json.dump(formatted_schedule, f, indent=2)
+        
+        print("\nDetailed schedule has been saved to 'schedule_output.json'")
     else:
         print("No solution found")
         exit(1)

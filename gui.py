@@ -6,6 +6,7 @@ import json
 import pandas as pd
 import math
 import threading
+import logging
 
 from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student, hour_blocker_save, get_hour_blocker
 
@@ -1160,7 +1161,6 @@ class MainGUI:
 
 
 
-
         btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
@@ -1581,61 +1581,118 @@ class MainGUI:
                     widget.delete(1.0, tk.END)
                     widget.config(state='disabled')
 
-        def display_schedule(schedule, subjects, teachers, students_raw):
-            clear_timetable()
-            
-            # Get all Text widgets
-            text_widgets = [w for w in timetable_frame.winfo_children() if isinstance(w, tk.Text)]
-            
-            for (day, period), sessions in schedule.items():
-                widget_index = period * 4 + day + period + 1
-                if widget_index < len(text_widgets):
-                    text_widget = text_widgets[widget_index]
-                    text_widget.config(state='normal')
-                    
-                    for sess in sessions:
-                        subject_name = subjects[sess['subject']][1]
-                        teacher_names = []
-                        for tid in sess['teachers']:
-                            teacher = teachers[tid]
-                            teacher_names.append(f"{teacher[1]} {teacher[3]}")
-                        
-                        student_count = len(sess['students'])
-                        
-                        text_widget.insert(tk.END, f"{subject_name}\n")
-                        text_widget.insert(tk.END, f"Teachers: {', '.join(teacher_names)}\n")
-                        text_widget.insert(tk.END, f"Students: {student_count}\n")
-                        text_widget.insert(tk.END, "-" * 20 + "\n")
-                    
-                    text_widget.config(state='disabled')
+        def display_schedule():
+            try:
+                # Read the JSON file
+                with open('schedule_output.json', 'r') as f:
+                    schedule_data = json.load(f)
+                
+                clear_timetable()
+                text_widgets = [w for w in timetable_frame.winfo_children() if isinstance(w, tk.Text)]
+                text_widgets.sort(key=lambda w: (int(str(w.grid_info()['row'])), int(str(w.grid_info()['column']))))
+                
+                # Display metadata
+                meta_label = tk.Label(control_frame, 
+                                    text=f"Total sessions: {schedule_data['metadata']['total_sessions']}", 
+                                    font=("Arial", 10))
+                meta_label.pack(side=tk.RIGHT, padx=5)
+                
+                # Display schedule
+                for day_idx in range(schedule_data['metadata']['num_days']):
+                    day_schedule = schedule_data['days'].get(str(day_idx), {})
+                    for period in range(schedule_data['metadata']['periods_per_day']):
+                        widget_index = (period * 4) + day_idx
+                        if widget_index < len(text_widgets):
+                            text_widget = text_widgets[widget_index]
+                            text_widget.config(state='normal')
+                            text_widget.delete(1.0, tk.END)
+                            
+                            sessions = day_schedule.get(str(period), [])
+                            if sessions:
+                                for sess in sessions:
+                                    text_widget.insert(tk.END, f"{sess['subject_name']}\n")
+                                    teachers = [t['name'] for t in sess['teachers']]
+                                    text_widget.insert(tk.END, f"Teachers: {', '.join(teachers)}\n")
+                                    text_widget.insert(tk.END, "Students:\n")
+                                    for student in sess['students']:
+                                        text_widget.insert(tk.END, f"- {student['name']}\n")
+                                    text_widget.insert(tk.END, "-" * 20 + "\n")
+                            else:
+                                text_widget.insert(tk.END, "---")
+                            
+                            text_widget.config(state='disabled')
+                
+            except FileNotFoundError:
+                messagebox.showerror("Error", "Schedule file not found. Run the algorithm first.")
+            except json.JSONDecodeError:
+                messagebox.showerror("Error", "Invalid schedule file format")
+            except Exception as e:
+                messagebox.showerror("Error", f"Error loading schedule: {str(e)}")
+                logger.error(f"Schedule display error: {str(e)}")
 
         def toggle_algorithm():
             nonlocal algorithm_thread, is_running
             
             if not is_running:
-                # Start algorithm
                 is_running = True
-                start_btn.config(text="Stop Algorithm")
+                start_btn.config(text="Stop Algorithm", state="disabled")
                 clear_timetable()
                 
                 def run_algorithm():
-                    import algorithm
                     try:
+                        import algorithm
+                        logging.basicConfig(level=logging.INFO)
+                        logger = logging.getLogger(__name__)
+                        
+                        logger.info("Loading data...")
                         teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = algorithm.load_data()
+                        
+                        if not teachers:
+                            raise ValueError("No teachers found in database")
+                        if not subjects:
+                            raise ValueError("No subjects found in database") 
+                        if not students_raw:
+                            raise ValueError("No students found in database")
+                        
+                        logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects, {len(students_raw)} students")
+                        
+                        logger.info("Building sessions...")
                         sessions = algorithm.build_sessions(teachers, subjects, st_map, stud_map, hb)
-                        schedule = algorithm.solve_timetable(sessions, time_limit=1200)
+                        
+                        if not sessions:
+                            raise ValueError("Failed to create any valid sessions - check teacher/subject assignments")
+                            
+                        logger.info(f"Created {len(sessions)} sessions")
+                        
+                        logger.info("Starting solver...")
+                        schedule, students_dict = algorithm.solve_timetable(sessions, time_limit=1200)
                         
                         if schedule:
-                            wind.after(0, lambda: display_schedule(schedule, subjects, teachers, students_raw))
-                    except Exception as e:
+                            logger.info("Found valid schedule, formatting output...")
+                            formatted_schedule = algorithm.format_schedule_output(schedule, subjects, teachers, students_dict)
+                            
+                            with open('schedule_output.json', 'w') as f:
+                                json.dump(formatted_schedule, f, indent=2)
+                                
+                            wind.after(0, display_schedule)
+                            wind.after(0, lambda: messagebox.showinfo("Success", 
+                                     f"Schedule generated successfully with {formatted_schedule['metadata']['total_sessions']} sessions!"))
+                        else:
+                            raise ValueError("Could not find a valid schedule - try adjusting constraints or checking data")
+                            
+                    except ValueError as e:
                         wind.after(0, lambda: messagebox.showerror("Error", str(e)))
+                        logger.error(f"Validation error: {str(e)}")
+                    except Exception as e:
+                        wind.after(0, lambda: messagebox.showerror("Error", 
+                                 f"Unexpected error: {str(e)}\nCheck the data and constraints"))
+                        logger.exception("Algorithm error")
                     finally:
-                        wind.after(0, lambda: stop_algorithm())
+                        wind.after(0, stop_algorithm)
                 
                 algorithm_thread = threading.Thread(target=run_algorithm)
                 algorithm_thread.daemon = True
                 algorithm_thread.start()
-            
             else:
                 stop_algorithm()
 
@@ -1643,12 +1700,17 @@ class MainGUI:
             nonlocal algorithm_thread, is_running
             is_running = False
             algorithm_thread = None
-            start_btn.config(text="Start Algorithm")
+            start_btn.config(text="Start Algorithm", state="normal")
 
         # Create UI elements
         start_btn = tk.Button(control_frame, text="Start Algorithm", font=("Arial", 14), 
                             command=toggle_algorithm)
         start_btn.pack(side=tk.LEFT, **options)
+
+        # Add view button to load existing schedule
+        view_btn = tk.Button(control_frame, text="View Saved Schedule", font=("Arial", 14),
+                           command=display_schedule)
+        view_btn.pack(side=tk.LEFT, padx=5)
 
         # Create initial empty timetable
         create_timetable()
