@@ -5,6 +5,7 @@ from tkinter.messagebox import showerror
 import json
 import pandas as pd
 import math
+import threading
 
 from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student, hour_blocker_save, get_hour_blocker
 
@@ -69,12 +70,10 @@ class MainGUI:
         self.btn6 = tk.Button(self.frame, text="Hour blocker", font=("Arial", 18), command=self.hour_blocker)
         self.btn6.grid(row=0, column=5, sticky=tk.W+tk.E, **options)
 
-        self.btn7 = tk.Button(self.frame, text="", font=("Arial", 18))
+        self.btn7 = tk.Button(self.frame, text="Algorithm", font=("Arial", 18), command=self.algorithm)
         self.btn7.grid(row=0, column=6, sticky=tk.W+tk.E, **options)
 
         self.frame.pack(fill="x")
-
-        self.window.mainloop()
 
     #SUBJECT
     def subject(self):
@@ -1537,4 +1536,129 @@ class MainGUI:
         change_list()
         wind.mainloop()   
 
-MainGUI()
+    #ALGORITHM
+    def algorithm(self):
+        wind = tk.Toplevel(self.window)
+        wind.title("Algorithm")
+        wind.geometry("1280x800")
+        wind.grab_set()
+
+        # Main frame
+        frame = tk.Frame(wind)
+        frame.pack(fill="both", expand=True)
+
+        # Control frame at top
+        control_frame = tk.Frame(frame)
+        control_frame.pack(fill="x", padx=5, pady=5)
+
+        # Timetable frame
+        timetable_frame = tk.Frame(frame)
+        timetable_frame.pack(fill="both", expand=True, padx=5, pady=5)
+
+        # Algorithm thread reference
+        algorithm_thread = None
+        is_running = False
+
+        def create_timetable():
+            # Create headers
+            tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold")).grid(row=0, column=0, **options)
+            days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
+            for i, day in enumerate(days):
+                tk.Label(timetable_frame, text=day, font=("Arial", 12, "bold")).grid(row=0, column=i+1, **options)
+
+            # Create hour labels and empty cells
+            for hour in range(10):
+                tk.Label(timetable_frame, text=str(hour+1), font=("Arial", 12)).grid(row=hour+1, column=0, **options)
+                for day in range(4):
+                    text = tk.Text(timetable_frame, height=5, width=30, font=("Arial", 10))
+                    text.grid(row=hour+1, column=day+1, padx=2, pady=2, sticky="nsew")
+                    text.config(state='disabled')
+
+        def clear_timetable():
+            for widget in timetable_frame.winfo_children():
+                if isinstance(widget, tk.Text):
+                    widget.config(state='normal')
+                    widget.delete(1.0, tk.END)
+                    widget.config(state='disabled')
+
+        def display_schedule(schedule, subjects, teachers, students_raw):
+            clear_timetable()
+            
+            # Get all Text widgets
+            text_widgets = [w for w in timetable_frame.winfo_children() if isinstance(w, tk.Text)]
+            
+            for (day, period), sessions in schedule.items():
+                widget_index = period * 4 + day + period + 1
+                if widget_index < len(text_widgets):
+                    text_widget = text_widgets[widget_index]
+                    text_widget.config(state='normal')
+                    
+                    for sess in sessions:
+                        subject_name = subjects[sess['subject']][1]
+                        teacher_names = []
+                        for tid in sess['teachers']:
+                            teacher = teachers[tid]
+                            teacher_names.append(f"{teacher[1]} {teacher[3]}")
+                        
+                        student_count = len(sess['students'])
+                        
+                        text_widget.insert(tk.END, f"{subject_name}\n")
+                        text_widget.insert(tk.END, f"Teachers: {', '.join(teacher_names)}\n")
+                        text_widget.insert(tk.END, f"Students: {student_count}\n")
+                        text_widget.insert(tk.END, "-" * 20 + "\n")
+                    
+                    text_widget.config(state='disabled')
+
+        def toggle_algorithm():
+            nonlocal algorithm_thread, is_running
+            
+            if not is_running:
+                # Start algorithm
+                is_running = True
+                start_btn.config(text="Stop Algorithm")
+                clear_timetable()
+                
+                def run_algorithm():
+                    import algorithm
+                    try:
+                        teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = algorithm.load_data()
+                        sessions = algorithm.build_sessions(teachers, subjects, st_map, stud_map, hb)
+                        schedule = algorithm.solve_timetable(sessions, time_limit=1200)
+                        
+                        if schedule:
+                            wind.after(0, lambda: display_schedule(schedule, subjects, teachers, students_raw))
+                    except Exception as e:
+                        wind.after(0, lambda: messagebox.showerror("Error", str(e)))
+                    finally:
+                        wind.after(0, lambda: stop_algorithm())
+                
+                algorithm_thread = threading.Thread(target=run_algorithm)
+                algorithm_thread.daemon = True
+                algorithm_thread.start()
+            
+            else:
+                stop_algorithm()
+
+        def stop_algorithm():
+            nonlocal algorithm_thread, is_running
+            is_running = False
+            algorithm_thread = None
+            start_btn.config(text="Start Algorithm")
+
+        # Create UI elements
+        start_btn = tk.Button(control_frame, text="Start Algorithm", font=("Arial", 14), 
+                            command=toggle_algorithm)
+        start_btn.pack(side=tk.LEFT, **options)
+
+        # Create initial empty timetable
+        create_timetable()
+
+        # Configure grid weights
+        for i in range(5):  # 0 for hour column + 4 days
+            timetable_frame.grid_columnconfigure(i, weight=1)
+        for i in range(11):  # 0 for header + 10 hours
+            timetable_frame.grid_rowconfigure(i, weight=1)
+
+if __name__ == '__main__':
+    app = MainGUI()
+    app.window.mainloop()
