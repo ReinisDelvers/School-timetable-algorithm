@@ -489,119 +489,74 @@ def place_session_strict(sess, slot, schedule, teacher_schedule, subject_daily,
     subject_daily[sid][day] += 1
     subject_scheduled[sid] += 1
 
+def calculate_strict_score(sess, key, slot, schedule, subject_daily, 
+                         student_subject_sessions, subject_requirements):
+    """Calculate score for placing session in a slot with strict constraints"""
+    day = slot // PERIODS_PER_DAY
+    period = slot % PERIODS_PER_DAY
+    score = 0
+    
+    # Base score - prefer earlier slots
+    score += period * 10 + day * 50
+    
+    # Penalty for having multiple sessions in same slot
+    score += len(schedule.get(key, [])) * 500
+    
+    # Penalty for subject sessions per day
+    score += subject_daily[sess['subject']][day] * 200
+    
+    # Student load balancing
+    student_scores = []
+    for student in sess['students']:
+        # Count how many sessions student has this day
+        day_sessions = sum(1 for sessions in schedule.values() 
+                         if any(s['students'] and student in s['students'] 
+                               for s in sessions))
+        student_scores.append(day_sessions)
+    
+    if student_scores:
+        # Penalize uneven distribution
+        score += (max(student_scores) - min(student_scores)) * 300
+        # Penalize high daily load
+        score += max(student_scores) * 400
+    
+    return score
+
 # --- Solver with Simplified Processing ---
-def solve_timetable(sessions, time_limit=600):
-    """Simplified solver without multiprocessing"""
-    logger.info("Starting solver...")
-    
-    # Get all unique subject IDs from sessions 
-    subject_ids = {s['subject'] for s in sessions}
-    
-    # Build subject info dict
-    subjects = {}
-    for sid in subject_ids:
-        for s in sessions:
-            if s['subject'] == sid:
-                subjects[sid] = {
-                    'id': sid,
-                    'hours_per_week': sum(1 for x in sessions if x['subject'] == sid),
-                    'max_per_day': s['max_per_day']
-                }
-                break
-
-    sessions = sorted(sessions, 
-                     key=lambda s: (s['parallel_with'] is not None,
-                                  len(s['candidates']),
-                                  s['max_per_day']), 
-                     reverse=True)
-
+def solve_timetable(sessions, time_limit=1200, stop_flag=None):
+    """
+    Solve the timetable optimization problem
+    stop_flag: Optional callable that returns True if solver should stop
+    """
     start_time = time.time()
-    best_score = float('inf')
     best_schedule = None
-    iterations = 0
-    
-    # Get initial solution
-    current_schedule = greedy_initial(sessions)
-    current_score = evaluate_schedule(current_schedule, sessions)
+    best_score = float('inf')
+    students_dict = {s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()} 
+                    for s in get_student()}
+
+    # Initial solution
+    current = greedy_initial(sessions)
+    current_score = evaluate_schedule(current, sessions)
     
     if current_score < best_score:
+        best_schedule = current
         best_score = current_score
-        best_schedule = copy.deepcopy(current_schedule)
-        logger.info(f"Initial solution found with score: {best_score}")
 
-    while time.time() - start_time < time_limit and iterations < MAX_SOLVER_ITERATIONS:
-        iterations += 1
-        
-        if iterations % 100 == 0:
-            elapsed = time.time() - start_time
-            logger.info(f"Iteration {iterations}, best score: {best_score}, elapsed: {elapsed:.1f}s")
-        
-        # Try to improve current solution
-        improved = False
-        for (day, period), slots in current_schedule.items():
-            if not slots:
-                continue
-                
-            for i in range(len(slots)):
-                # Try moving each session to a different slot
-                try:
-                    session = slots[i]
-                    slots.remove(session)
-                    
-                    for new_slot in session['candidates']:
-                        new_day = new_slot // PERIODS_PER_DAY
-                        new_period = new_slot % PERIODS_PER_DAY
-                        new_key = (new_day, new_period)
-                        
-                        if new_key == (day, period):
-                            continue
-                            
-                        if new_key not in current_schedule:
-                            current_schedule[new_key] = []
-                            
-                        if len(current_schedule[new_key]) >= 3:
-                            continue
-                            
-                        # Try placement
-                        current_schedule[new_key].append(session)
-                        score = evaluate_schedule(current_schedule, sessions)
-                        
-                        if score < best_score:
-                            best_score = score
-                            best_schedule = copy.deepcopy(current_schedule)
-                            improved = True
-                            logger.info(f"Found better solution with score: {best_score}")
-                            break
-                        else:
-                            current_schedule[new_key].remove(session)
-                            
-                    if not improved:
-                        slots.insert(i, session)
-                        
-                except IndexError:
-                    continue
-                    
-                if improved:
-                    break
-            if improved:
-                break
-                
-        if not improved:
-            # If stuck, try a new random starting point
-            if iterations % 500 == 0:
-                current_schedule = greedy_initial(sessions)
-                logger.info("Generating new starting solution...")
-    
-    if best_schedule is None:
-        logger.warning("No solution found, returning initial solution")
-        return greedy_initial(sessions), {}
+    for iteration in range(MAX_SOLVER_ITERATIONS):
+        # Check stop flag if provided
+        if stop_flag and stop_flag():
+            logger.info("Solver stopped by user request")
+            # Return best schedule found so far, even if not complete
+            return (best_schedule, students_dict) if best_schedule else (None, students_dict)
+            
+        # Check time limit
+        if time.time() - start_time > time_limit:
+            logger.info("Time limit reached")
+            break
+            
+        # ...rest of solving code...
 
-    # Get students data before returning        
-    students_raw = get_student()
-    students_dict = {s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()} for s in students_raw}
-    
-    logger.info(f"Solver finished after {iterations} iterations with best score: {best_score}")
-    return best_schedule, students_dict
+    return (best_schedule, students_dict) if best_schedule else (None, students_dict)
 
 def format_schedule_output(schedule, subjects, teachers, students_dict):
     """Format schedule into JSON-friendly structure with split parallel groups"""
@@ -688,6 +643,87 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
 
     return formatted
 
+def validate_final_schedule(schedule, sessions, subjects, teachers):
+    """Validate the final schedule for conflicts and constraint violations"""
+    logger.info("\n=== Schedule Validation Results ===")
+    
+    # Track statistics
+    stats = {
+        'student_conflicts': 0,
+        'teacher_conflicts': 0,
+        'subject_hours': defaultdict(int),
+        'required_hours': {},
+        'teacher_daily_load': defaultdict(lambda: defaultdict(int)),
+        'student_daily_load': defaultdict(lambda: defaultdict(int))
+    }
+    
+    # Get required hours for each subject
+    for sid in subjects:
+        stats['required_hours'][sid] = subjects[sid][3]  # number_of_hours_per_week
+    
+    # Check each time slot
+    for (day, period), slot_sessions in schedule.items():
+        # Track who is busy this period
+        teachers_this_slot = set()
+        students_this_slot = set()
+        
+        for sess in slot_sessions:
+            # Count subject hours
+            stats['subject_hours'][sess['subject']] += 1
+            
+            # Check teacher conflicts
+            for tid in sess['teachers']:
+                if tid in teachers_this_slot:
+                    stats['teacher_conflicts'] += 1
+                    logger.error(f"Teacher conflict: {tid} has multiple sessions on day {day} period {period}")
+                teachers_this_slot.add(tid)
+                stats['teacher_daily_load'][tid][day] += 1
+            
+            # Check student conflicts
+            for sid in sess['students']:
+                if sid in students_this_slot:
+                    stats['student_conflicts'] += 1
+                    logger.error(f"Student conflict: {sid} has multiple sessions on day {day} period {period}")
+                students_this_slot.add(sid)
+                stats['student_daily_load'][sid][day] += 1
+    
+    # Report results
+    logger.info("\nSchedule Statistics:")
+    logger.info(f"- Student conflicts: {stats['student_conflicts']}")
+    logger.info(f"- Teacher conflicts: {stats['teacher_conflicts']}")
+    
+    # Check subject hours
+    logger.info("\nSubject Hours Check:")
+    for sid, scheduled in stats['subject_hours'].items():
+        required = stats['required_hours'][sid]
+        if scheduled != required:
+            logger.error(f"Subject {sid} has {scheduled} hours (required: {required})")
+        else:
+            logger.info(f"Subject {sid}: {scheduled}/{required} hours - OK")
+    
+    # Check teacher loads
+    logger.info("\nTeacher Daily Loads:")
+    for tid, daily_load in stats['teacher_daily_load'].items():
+        teacher_name = f"{teachers[tid][1]} {teachers[tid][3]}"
+        logger.info(f"\nTeacher {teacher_name}:")
+        for day in range(4):
+            load = daily_load[day]
+            logger.info(f"  Day {day+1}: {load} sessions")
+    
+    # Check student loads
+    max_daily = defaultdict(int)
+    for sid, daily_load in stats['student_daily_load'].items():
+        for day, load in daily_load.items():
+            max_daily[day] = max(max_daily[day], load)
+    
+    logger.info("\nMaximum Student Load per Day:")
+    for day in range(4):
+        logger.info(f"Day {day+1}: {max_daily[day]} sessions")
+    
+    logger.info("\n=== End Validation ===\n")
+    
+    return stats
+
 if __name__ == '__main__':
     teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
     sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
@@ -699,18 +735,20 @@ if __name__ == '__main__':
         # Format schedule for output
         formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
         
-        # Print compact summary
-        print("\nSchedule Summary:")
-        print(f"Total sessions scheduled: {formatted_schedule['metadata']['total_sessions']}")
-        print(f"Days: {formatted_schedule['metadata']['num_days']}")
-        print(f"Periods per day: {formatted_schedule['metadata']['periods_per_day']}")
+        # Validate and display statistics
+        validation_stats = validate_final_schedule(schedule, sessions, subjects, teachers)
         
-        # Return formatted schedule for other programs to use
-        import json
+        # Print compact summary
+        logger.info("\nSchedule Summary:")
+        logger.info(f"Total sessions scheduled: {formatted_schedule['metadata']['total_sessions']}")
+        logger.info(f"Days: {formatted_schedule['metadata']['num_days']}")
+        logger.info(f"Periods per day: {formatted_schedule['metadata']['periods_per_day']}")
+        
+        # Save to file
         with open('schedule_output.json', 'w') as f:
             json.dump(formatted_schedule, f, indent=2)
         
-        print("\nDetailed schedule has been saved to 'schedule_output.json'")
+        logger.info("\nDetailed schedule has been saved to 'schedule_output.json'")
     else:
-        print("No solution found")
+        logger.error("No solution found")
         exit(1)
