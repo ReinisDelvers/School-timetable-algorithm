@@ -2,7 +2,7 @@
   "metadata": {
     "num_days": 4,
     "periods_per_day": 10,
-    "total_sessions": 55
+    "total_sessions": 56
   },
   "days": {
     "0": {
@@ -1700,16 +1700,28 @@
           "parallel_group_id": null
         },
         {
-          "id": "S71_H0",
-          "subject_id": 71,
-          "subject_name": "Fran\u010du valoda",
+          "id": "S55_H0",
+          "subject_id": 55,
+          "subject_name": "Biolo\u0123ija I",
           "teachers": [
             {
-              "id": 37,
-              "name": "Evija  Circene"
+              "id": 43,
+              "name": "Ilze  Rikmane"
             }
           ],
           "students": [
+            {
+              "id": 287,
+              "name": "John Michael Smith"
+            },
+            {
+              "id": 288,
+              "name": "Sarah  Johnson"
+            },
+            {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
             {
               "id": 294,
               "name": "Isabella Lily Clark"
@@ -1727,10 +1739,6 @@
               "name": "Samuel Jacob Robinson"
             },
             {
-              "id": 300,
-              "name": "Harper Grace Moore"
-            },
-            {
               "id": 301,
               "name": "Mason William King"
             },
@@ -1743,20 +1751,12 @@
               "name": "Lucas Henry Adams"
             },
             {
-              "id": 304,
-              "name": "Sophia Victoria Nelson"
-            },
-            {
               "id": 305,
               "name": "Matthew Ryan Carter"
             },
             {
               "id": 309,
               "name": "Elijah Noah Cooper"
-            },
-            {
-              "id": 310,
-              "name": "Grace Olivia Carter"
             },
             {
               "id": 311,
@@ -1769,6 +1769,54 @@
             {
               "id": 313,
               "name": "Michael Christopher Baker"
+            },
+            {
+              "id": 314,
+              "name": "Abigail Marie Sanchez"
+            },
+            {
+              "id": 315,
+              "name": "Leo Samuel Carter"
+            },
+            {
+              "id": 317,
+              "name": "Noah Daniel Wood"
+            },
+            {
+              "id": 324,
+              "name": "Isabella Maria Parker"
+            },
+            {
+              "id": 325,
+              "name": "Joshua David Morris"
+            },
+            {
+              "id": 327,
+              "name": "Mason Gabriel Young"
+            },
+            {
+              "id": 331,
+              "name": "Lucas Ryan Mitchell"
+            },
+            {
+              "id": 333,
+              "name": "James Lucas Harris"
+            },
+            {
+              "id": 337,
+              "name": "Nathaniel John Ward"
+            },
+            {
+              "id": 338,
+              "name": "Abigail Rose Simmons"
+            },
+            {
+              "id": 339,
+              "name": "Carter Michael Campbell"
+            },
+            {
+              "id": 340,
+              "name": "Harper Rae Carter"
             }
           ],
           "group": 1,
@@ -1842,35 +1890,75 @@
           "parallel_group_id": null
         },
         {
-          "id": "S50_H0",
-          "subject_id": 50,
-          "subject_name": "3.V\u0101cu valoda",
+          "id": "S71_H0",
+          "subject_id": 71,
+          "subject_name": "Fran\u010du valoda",
           "teachers": [
             {
-              "id": 31,
-              "name": "Svetlana  Bondarenko"
+              "id": 37,
+              "name": "Evija  Circene"
             }
           ],
           "students": [
             {
-              "id": 287,
-              "name": "John Michael Smith"
+              "id": 294,
+              "name": "Isabella Lily Clark"
             },
             {
-              "id": 288,
-              "name": "Sarah  Johnson"
+              "id": 295,
+              "name": "Benjamin Alexander Lewis"
             },
             {
-              "id": 290,
-              "name": "David Andrew Brown"
+              "id": 296,
+              "name": "Mia Elizabeth Young"
             },
             {
-              "id": 292,
-              "name": "Olivia Grace Taylor"
+              "id": 299,
+              "name": "Samuel Jacob Robinson"
             },
             {
-              "id": 293,
-              "name": "James Matthew Harris"
+              "id": 300,
+              "name": "Harper Grace Moore"
+            },
+            {
+              "id": 301,
+              "name": "Mason William King"
+            },
+            {
+              "id": 302,
+              "name": "Ella Abigail Scott"
+            },
+            {
+              "id": 303,
+              "name": "Lucas Henry Adams"
+            },
+            {
+              "id": 304,
+              "name": "Sophia Victoria Nelson"
+            },
+            {
+              "id": 305,
+              "name": "Matthew Ryan Carter"
+            },
+            {
+              "id": 309,
+              "name": "Elijah Noah Cooper"
+            },
+            {
+              "id": 310,
+              "name": "Grace Olivia Carter"
+            },
+            {
+              "id": 311,
+              "name": "Jack Benjamin Evans"
+            },
+            {
+              "id": 312,
+              "name": "Emily Chloe Green"
+            },
+            {
+              "id": 313,
+              "name": "Michael Christopher Baker"
             }
           ],
           "group": 1,
@@ -3550,16 +3638,28 @@
           "parallel_group_id": null
         },
         {
-          "id": "S71_H1",
-          "subject_id": 71,
-          "subject_name": "Fran\u010du valoda",
+          "id": "S55_H1",
+          "subject_id": 55,
+          "subject_name": "Biolo\u0123ija I",
           "teachers": [
             {
-              "id": 37,
-              "name": "Evija  Circene"
+              "id": 43,
+              "name": "Ilze  Rikmane"
             }
           ],
           "students": [
+            {
+              "id": 287,
+              "name": "John Michael Smith"
+            },
+            {
+              "id": 288,
+              "name": "Sarah  Johnson"
+            },
+            {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
             {
               "id": 294,
               "name": "Isabella Lily Clark"
@@ -3577,10 +3677,6 @@
               "name": "Samuel Jacob Robinson"
             },
             {
-              "id": 300,
-              "name": "Harper Grace Moore"
-            },
-            {
               "id": 301,
               "name": "Mason William King"
             },
@@ -3593,20 +3689,12 @@
               "name": "Lucas Henry Adams"
             },
             {
-              "id": 304,
-              "name": "Sophia Victoria Nelson"
-            },
-            {
               "id": 305,
               "name": "Matthew Ryan Carter"
             },
             {
               "id": 309,
               "name": "Elijah Noah Cooper"
-            },
-            {
-              "id": 310,
-              "name": "Grace Olivia Carter"
             },
             {
               "id": 311,
@@ -3619,6 +3707,54 @@
             {
               "id": 313,
               "name": "Michael Christopher Baker"
+            },
+            {
+              "id": 314,
+              "name": "Abigail Marie Sanchez"
+            },
+            {
+              "id": 315,
+              "name": "Leo Samuel Carter"
+            },
+            {
+              "id": 317,
+              "name": "Noah Daniel Wood"
+            },
+            {
+              "id": 324,
+              "name": "Isabella Maria Parker"
+            },
+            {
+              "id": 325,
+              "name": "Joshua David Morris"
+            },
+            {
+              "id": 327,
+              "name": "Mason Gabriel Young"
+            },
+            {
+              "id": 331,
+              "name": "Lucas Ryan Mitchell"
+            },
+            {
+              "id": 333,
+              "name": "James Lucas Harris"
+            },
+            {
+              "id": 337,
+              "name": "Nathaniel John Ward"
+            },
+            {
+              "id": 338,
+              "name": "Abigail Rose Simmons"
+            },
+            {
+              "id": 339,
+              "name": "Carter Michael Campbell"
+            },
+            {
+              "id": 340,
+              "name": "Harper Rae Carter"
             }
           ],
           "group": 1,
@@ -3692,35 +3828,75 @@
           "parallel_group_id": null
         },
         {
-          "id": "S50_H1",
-          "subject_id": 50,
-          "subject_name": "3.V\u0101cu valoda",
+          "id": "S71_H1",
+          "subject_id": 71,
+          "subject_name": "Fran\u010du valoda",
           "teachers": [
             {
-              "id": 31,
-              "name": "Svetlana  Bondarenko"
+              "id": 37,
+              "name": "Evija  Circene"
             }
           ],
           "students": [
             {
-              "id": 287,
-              "name": "John Michael Smith"
+              "id": 294,
+              "name": "Isabella Lily Clark"
             },
             {
-              "id": 288,
-              "name": "Sarah  Johnson"
+              "id": 295,
+              "name": "Benjamin Alexander Lewis"
             },
             {
-              "id": 290,
-              "name": "David Andrew Brown"
+              "id": 296,
+              "name": "Mia Elizabeth Young"
             },
             {
-              "id": 292,
-              "name": "Olivia Grace Taylor"
+              "id": 299,
+              "name": "Samuel Jacob Robinson"
             },
             {
-              "id": 293,
-              "name": "James Matthew Harris"
+              "id": 300,
+              "name": "Harper Grace Moore"
+            },
+            {
+              "id": 301,
+              "name": "Mason William King"
+            },
+            {
+              "id": 302,
+              "name": "Ella Abigail Scott"
+            },
+            {
+              "id": 303,
+              "name": "Lucas Henry Adams"
+            },
+            {
+              "id": 304,
+              "name": "Sophia Victoria Nelson"
+            },
+            {
+              "id": 305,
+              "name": "Matthew Ryan Carter"
+            },
+            {
+              "id": 309,
+              "name": "Elijah Noah Cooper"
+            },
+            {
+              "id": 310,
+              "name": "Grace Olivia Carter"
+            },
+            {
+              "id": 311,
+              "name": "Jack Benjamin Evans"
+            },
+            {
+              "id": 312,
+              "name": "Emily Chloe Green"
+            },
+            {
+              "id": 313,
+              "name": "Michael Christopher Baker"
             }
           ],
           "group": 1,
@@ -5144,130 +5320,6 @@
           "group": 1,
           "is_parallel": false,
           "parallel_group_id": null
-        },
-        {
-          "id": "S55_H0",
-          "subject_id": 55,
-          "subject_name": "Biolo\u0123ija I",
-          "teachers": [
-            {
-              "id": 43,
-              "name": "Ilze  Rikmane"
-            }
-          ],
-          "students": [
-            {
-              "id": 287,
-              "name": "John Michael Smith"
-            },
-            {
-              "id": 288,
-              "name": "Sarah  Johnson"
-            },
-            {
-              "id": 292,
-              "name": "Olivia Grace Taylor"
-            },
-            {
-              "id": 294,
-              "name": "Isabella Lily Clark"
-            },
-            {
-              "id": 295,
-              "name": "Benjamin Alexander Lewis"
-            },
-            {
-              "id": 296,
-              "name": "Mia Elizabeth Young"
-            },
-            {
-              "id": 299,
-              "name": "Samuel Jacob Robinson"
-            },
-            {
-              "id": 301,
-              "name": "Mason William King"
-            },
-            {
-              "id": 302,
-              "name": "Ella Abigail Scott"
-            },
-            {
-              "id": 303,
-              "name": "Lucas Henry Adams"
-            },
-            {
-              "id": 305,
-              "name": "Matthew Ryan Carter"
-            },
-            {
-              "id": 309,
-              "name": "Elijah Noah Cooper"
-            },
-            {
-              "id": 311,
-              "name": "Jack Benjamin Evans"
-            },
-            {
-              "id": 312,
-              "name": "Emily Chloe Green"
-            },
-            {
-              "id": 313,
-              "name": "Michael Christopher Baker"
-            },
-            {
-              "id": 314,
-              "name": "Abigail Marie Sanchez"
-            },
-            {
-              "id": 315,
-              "name": "Leo Samuel Carter"
-            },
-            {
-              "id": 317,
-              "name": "Noah Daniel Wood"
-            },
-            {
-              "id": 324,
-              "name": "Isabella Maria Parker"
-            },
-            {
-              "id": 325,
-              "name": "Joshua David Morris"
-            },
-            {
-              "id": 327,
-              "name": "Mason Gabriel Young"
-            },
-            {
-              "id": 331,
-              "name": "Lucas Ryan Mitchell"
-            },
-            {
-              "id": 333,
-              "name": "James Lucas Harris"
-            },
-            {
-              "id": 337,
-              "name": "Nathaniel John Ward"
-            },
-            {
-              "id": 338,
-              "name": "Abigail Rose Simmons"
-            },
-            {
-              "id": 339,
-              "name": "Carter Michael Campbell"
-            },
-            {
-              "id": 340,
-              "name": "Harper Rae Carter"
-            }
-          ],
-          "group": 1,
-          "is_parallel": false,
-          "parallel_group_id": null
         }
       ],
       "8": [
@@ -5329,6 +5381,42 @@
             {
               "id": 374,
               "name": "Mason Riley Thompson"
+            }
+          ],
+          "group": 1,
+          "is_parallel": false,
+          "parallel_group_id": null
+        },
+        {
+          "id": "S50_H0",
+          "subject_id": 50,
+          "subject_name": "3.V\u0101cu valoda",
+          "teachers": [
+            {
+              "id": 31,
+              "name": "Svetlana  Bondarenko"
+            }
+          ],
+          "students": [
+            {
+              "id": 287,
+              "name": "John Michael Smith"
+            },
+            {
+              "id": 288,
+              "name": "Sarah  Johnson"
+            },
+            {
+              "id": 290,
+              "name": "David Andrew Brown"
+            },
+            {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
+            {
+              "id": 293,
+              "name": "James Matthew Harris"
             }
           ],
           "group": 1,
@@ -6513,6 +6601,42 @@
             {
               "id": 374,
               "name": "Mason Riley Thompson"
+            }
+          ],
+          "group": 1,
+          "is_parallel": false,
+          "parallel_group_id": null
+        },
+        {
+          "id": "S50_H1",
+          "subject_id": 50,
+          "subject_name": "3.V\u0101cu valoda",
+          "teachers": [
+            {
+              "id": 31,
+              "name": "Svetlana  Bondarenko"
+            }
+          ],
+          "students": [
+            {
+              "id": 287,
+              "name": "John Michael Smith"
+            },
+            {
+              "id": 288,
+              "name": "Sarah  Johnson"
+            },
+            {
+              "id": 290,
+              "name": "David Andrew Brown"
+            },
+            {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
+            {
+              "id": 293,
+              "name": "James Matthew Harris"
             }
           ],
           "group": 1,

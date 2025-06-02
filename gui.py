@@ -33,6 +33,16 @@ class MainGUI:
         
         self.window.title("School timetable algorithm")
 
+        self.menubar = tk.Menu(self.window)
+
+        self.filemenu = tk.Menu(self.menubar, tearoff=0)
+        self.filemenu.add_command(label="Close", command=exit)        
+        self.filemenu.add_separator()
+
+        self.menubar.add_cascade(menu=self.filemenu, label="File")
+
+        self.window.config(menu=self.menubar)
+
         self.frame = tk.Frame(self.window)
         
         self.frame.columnconfigure(0, weight=1)
@@ -1150,7 +1160,6 @@ class MainGUI:
 
 
 
-
         btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
@@ -1350,17 +1359,17 @@ class MainGUI:
         label11.grid(row=1, column=6, sticky=tk.W+tk.E, **options)
 
         label12 = tk.Label(frame, text="7", font=("Arial", 18))
-        label12.grid(row=1, column=7, sticky=tk.W+tk.E, **options)
+        label12.grid(row=1, column=7, sticky=tk.W+tk.E)
 
         label13 = tk.Label(frame, text="8", font=("Arial", 18))
-        label13.grid(row=1, column=8, sticky=tk.W+tk.E, **options)
+        label13.grid(row=1, column=8, sticky=tk.W+tk.E)
 
         label14 = tk.Label(frame, text="9", font=("Arial", 18))
-        label14.grid(row=1, column=9, sticky=tk.W+tk.E, **options)
+        label14.grid(row=1, column=9, sticky=tk.W+tk.E)
 
         label15 = tk.Label(frame, text="10", font=("Arial", 18))
-        label15.grid(row=1, column=10, sticky=tk.W+tk.E, **options)
-        
+        label15.grid(row=1, column=10, sticky=tk.W+tk.E)
+
         checkboxent1 = tk.IntVar(value=1)
         box1 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
         box1.grid(row=2, column=1, sticky=tk.W+tk.E)
@@ -1528,548 +1537,331 @@ class MainGUI:
 
     #ALGORITHM
     def algorithm(self):
-        wind = tk.Toplevel(self.window)
-        wind.title("Algorithm")
-        wind.geometry("1600x900")
-        wind.grab_set()
+            wind = tk.Toplevel(self.window)
+            wind.title("Algorithm")
+            wind.state('zoomed')  # Start maximized
+            wind.grab_set()
 
-        # Main frame
-        frame = tk.Frame(wind)
-        frame.pack(fill="both", expand=True)
+            # Main container
+            main_container = tk.PanedWindow(wind, orient=tk.HORIZONTAL)
+            main_container.pack(fill=tk.BOTH, expand=True)
 
-        algorithm_thread = None
-        is_running = False
+            # Left side - Timetable
+            left_frame = tk.Frame(main_container)
+            main_container.add(left_frame)
 
-        # Top control frame
-        control_frame = tk.Frame(frame)
-        control_frame.pack(fill="x", padx=5, pady=5)
+            # Right side - Controls
+            right_frame = tk.Frame(main_container, width=400)
+            main_container.add(right_frame)
 
-        # Control elements (left side)
-        controls_left = tk.Frame(control_frame)
-        controls_left.pack(side=tk.LEFT)
+            # Control panel
+            control_panel = tk.LabelFrame(right_frame, text="Controls", font=("Arial", 12, "bold"))
+            control_panel.pack(fill=tk.X, padx=5, pady=5)
 
-        iter_label = tk.Label(controls_left, text="Max Iterations:", font=("Arial", 12))
-        iter_label.pack(side=tk.LEFT, padx=5)
-        
-        iter_entry = tk.Entry(controls_left, width=10, font=("Arial", 12))
-        iter_entry.insert(0, "2000")
-        iter_entry.pack(side=tk.LEFT, padx=5)
-
-        # Create main content panes
-        content_frame = tk.Frame(frame)
-        content_frame.pack(fill="both", expand=True, padx=5, pady=5)
-        
-        # Split into left (timetable) and right (validation) panes
-        left_pane = tk.Frame(content_frame)
-        left_pane.pack(side=tk.LEFT, fill="both", expand=True)
-        
-        right_pane = tk.Frame(content_frame)
-        right_pane.pack(side=tk.RIGHT, fill="y", padx=(5,0))
-
-        # Add validation results frame
-        validation_frame = tk.LabelFrame(right_pane, text="Validation Results", font=("Arial", 12, "bold"))
-        validation_frame.pack(fill="both", expand=True)
-
-        # Add log text widget with scroll BEFORE defining toggle_algorithm
-        log_frame = tk.LabelFrame(right_pane, text="Algorithm Progress", font=("Arial", 12, "bold"))
-        log_frame.pack(fill="both", expand=True, pady=(10,0))
-        
-        log_text = tk.Text(log_frame, height=10, font=("Courier", 10))
-        log_text.pack(fill="both", expand=True)
-        
-        log_scroll = tk.Scrollbar(log_frame)
-        log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        log_text.config(yscrollcommand=log_scroll.set)
-        log_scroll.config(command=log_text.yview)
-
-        # Add validation text widget with larger font
-        validation_text = tk.Text(validation_frame, width=50, font=("Courier", 12))
-        validation_text.pack(fill="both", expand=True)
-        
-        validation_scroll = tk.Scrollbar(validation_frame)
-        validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-        
-        validation_text.config(yscrollcommand=validation_scroll.set)
-        validation_scroll.config(command=validation_text.yview)
-
-        def create_timetable():
-            """Create empty timetable with optimized layout"""
-            for widget in timetable_frame.winfo_children():
-                widget.destroy()
-
-            # Configure grid with fixed size
-            tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold"), 
-                    bg='#e0e0e0', width=8).grid(row=0, column=0, padx=2, pady=2)
+            # Iteration controls
+            iter_frame = tk.Frame(control_panel)
+            iter_frame.pack(fill=tk.X, padx=5, pady=5)
             
-            days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-            for i, day in enumerate(days):
-                tk.Label(timetable_frame, text=day, font=("Arial", 12, "bold"), 
-                        bg='#e0e0e0', width=35).grid(row=0, column=i+1, padx=2, pady=2)
+            tk.Label(iter_frame, text="Max Iterations:", font=("Arial", 12)).pack(side=tk.LEFT)
+            iter_entry = tk.Entry(iter_frame, width=10, font=("Arial", 12))
+            iter_entry.insert(0, "2000")
+            iter_entry.pack(side=tk.LEFT, padx=5)
 
-            # Create cells with consistent size
-            for hour in range(10):
-                tk.Label(timetable_frame, text=str(hour+1), font=("Arial", 12),
-                        bg='#e0e0e0', width=8).grid(row=hour+1, column=0, padx=2, pady=2)
+            # Algorithm controls
+            btn_frame = tk.Frame(control_panel)
+            btn_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            start_btn = tk.Button(btn_frame, text="Start Algorithm", font=("Arial", 12))
+            start_btn.pack(side=tk.LEFT, padx=5)
+            
+            view_btn = tk.Button(btn_frame, text="View Saved Schedule", font=("Arial", 12))
+            view_btn.pack(side=tk.LEFT, padx=5)
+
+            # Filter controls
+            filter_frame = tk.LabelFrame(right_frame, text="Filters", font=("Arial", 12, "bold"))
+            filter_frame.pack(fill=tk.X, padx=5, pady=5)
+
+            subjects_var = tk.StringVar(value="all")
+            tk.Radiobutton(filter_frame, text="Show All", variable=subjects_var, 
+                          value="all", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Subject", variable=subjects_var,
+                          value="selected", font=("Arial", 10)).pack(anchor=tk.W)
+
+            subject_listbox = tk.Listbox(filter_frame, height=5, font=("Arial", 10))
+            subject_listbox.pack(fill=tk.X, padx=5, pady=5)
+
+            # Validation panel
+            validation_frame = tk.LabelFrame(right_frame, text="Validation Results", font=("Arial", 12, "bold"))
+            validation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            validation_text = tk.Text(validation_frame, font=("Courier", 10))
+            validation_scroll = tk.Scrollbar(validation_frame, command=validation_text.yview)
+            validation_text.configure(yscrollcommand=validation_scroll.set)
+            validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            validation_text.pack(fill=tk.BOTH, expand=True)
+
+            # Timetable canvas
+            canvas_frame = tk.Frame(left_frame)
+            canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+            main_canvas = tk.Canvas(canvas_frame)
+            main_scrollbar_y = tk.Scrollbar(canvas_frame, orient="vertical", command=main_canvas.yview)
+            main_scrollbar_x = tk.Scrollbar(canvas_frame, orient="horizontal", command=main_canvas.xview)
+            
+            timetable_frame = tk.Frame(main_canvas)
+            
+            def on_configure(event):
+                main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+            
+            timetable_frame.bind('<Configure>', on_configure)
+            main_canvas_window = main_canvas.create_window((0, 0), window=timetable_frame, anchor='nw')
+            
+            main_canvas.configure(yscrollcommand=main_scrollbar_y.set,
+                                xscrollcommand=main_scrollbar_x.set)
+            
+            main_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+            main_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+            main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+            def create_session_card(parent, session, scale=1.0):
+                frame = tk.Frame(parent, relief="raised", bd=1, bg='#f5f5f5')
                 
-                for day in range(4):
-                    frame = tk.Frame(timetable_frame, relief="solid", borderwidth=1)
-                    frame.grid(row=hour+1, column=day+1, padx=2, pady=2, sticky="nsew")
-                    frame.configure(width=300, height=120)
-                    frame.grid_propagate(False)
-                    frame.grid_columnconfigure(0, weight=1)
-
-            # Configure grid column weights
-            for i in range(5):  # 0 for hours column + 4 for days
-                timetable_frame.grid_columnconfigure(i, weight=1)
-
-        def clear_timetable():
-            for widget in timetable_frame.winfo_children():
-                if isinstance(widget, tk.Text):
-                    widget.config(state='normal')
-                    widget.delete(1.0, tk.END)
-                    widget.config(state='disabled')
-
-        def bind_mousewheel(widget, canvas):
-            """Bind mousewheel to scrolling for both Windows and Linux"""
-            def _on_mousewheel(event):
-                try:
-                    # Get mouse position relative to the widget
-                    x, y = widget.winfo_pointerxy()
-                    target = widget.winfo_containing(x, y)
+                # Header with subject
+                header = tk.Label(frame, text=f"{session['subject_name']} (G{session.get('group', 1)})",
+                                font=("Arial", int(11*scale), "bold"), bg='#e0e0e0')
+                header.pack(fill=tk.X, padx=2, pady=1)
+                
+                # Teacher
+                if session.get('teachers'):
+                    teacher = tk.Label(frame, text=session['teachers'][0].get('name', ''),
+                                     font=("Arial", int(10*scale)), bg='#f5f5f5')
+                    teacher.pack(fill=tk.X, padx=2)
+                
+                # Student count and list
+                students = session.get('students', [])
+                if students:
+                    count_frame = tk.Frame(frame, bg='#f5f5f5')
+                    count_frame.pack(fill=tk.X, padx=2)
                     
-                    # Only scroll if mouse is over the target widget or its children
-                    if not (target and (target == widget or widget.winfo_pathname(target.winfo_id()).startswith(widget.winfo_pathname(widget.winfo_id())))):
-                        return
-                        
-                    # Get current scroll position
-                    scroll_position = canvas.yview()
+                    tk.Label(count_frame, text=f"Students: {len(students)}", 
+                           font=("Arial", int(9*scale)), bg='#f5f5f5').pack(side=tk.LEFT)
                     
-                    # Calculate scroll direction
-                    if event.delta:  # Windows
-                        delta = -1 if event.delta < 0 else 1
-                    else:  # Linux
-                        delta = 1 if event.num == 4 else -1
+                    def show_students():
+                        dialog = tk.Toplevel(wind)
+                        dialog.title(f"Students - {session['subject_name']}")
+                        dialog.geometry("300x400")
+                        
+                        list_box = tk.Listbox(dialog, font=("Arial", 10))
+                        list_box.pack(fill=tk.BOTH, expand=True)
+                        
+                        for student in students:
+                            list_box.insert(tk.END, student['name'])
+                            
+                    tk.Button(count_frame, text="Show List", 
+                             font=("Arial", int(8*scale)), command=show_students).pack(side=tk.RIGHT)
+                
+                return frame
+
+            def update_timetable_display(schedule_data=None, filter_subject=None):
+                for widget in timetable_frame.winfo_children():
+                    widget.destroy()
+                
+                days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
+                hours = range(1, 11)
+                
+                # Headers
+                tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold"),
+                        width=8).grid(row=0, column=0, sticky='nsew')
+                
+                for i, day in enumerate(days):
+                    tk.Label(timetable_frame, text=day, font=("Arial", 12, "bold"),
+                            width=35).grid(row=0, column=i+1, sticky='nsew')
+                
+                # Time slots
+                for hour in hours:
+                    tk.Label(timetable_frame, text=str(hour),
+                            font=("Arial", 12)).grid(row=hour, column=0)
                     
-                    # Apply scrolling if within bounds
-                    if (delta < 0 and scroll_position[1] < 1) or (delta > 0 and scroll_position[0] > 0):
-                        canvas.yview_scroll(-delta, "units")
+                    for day in range(4):
+                        cell = tk.Frame(timetable_frame, relief="solid", bd=1)
+                        cell.grid(row=hour, column=day+1, padx=2, pady=2, sticky='nsew')
+                        cell.configure(width=300, height=150)
+                        cell.grid_propagate(False)
                         
-                except Exception as e:
-                    logger.error(f"Scroll error: {e}")
-                    return
-            
-            # Bind to the specific widget instead of bind_all
-            widget.bind("<MouseWheel>", _on_mousewheel)  # Windows
-            widget.bind("<Button-4>", _on_mousewheel)    # Linux scroll up
-            widget.bind("<Button-5>", _on_mousewheel)    # Linux scroll down
-
-        def unbind_mousewheel(widget):
-            """Unbind mousewheel events"""
-            widget.unbind("<MouseWheel>")
-            widget.unbind("<Button-4>")
-            widget.unbind("<Button-5>")
-
-        def display_schedule():
-            """Display schedule with proper scrolling for multiple sessions"""
-            try:
-                with open('schedule_output.json', 'r') as f:
-                    schedule_data = json.load(f)
-                
-                clear_timetable()
-                
-                # Helper class for session display
-                class SessionDisplay(tk.Frame):
-                    def __init__(self, parent, session):
-                        super().__init__(parent, relief="raised", bd=1, bg='#f5f5f5')
-                        self.grid_columnconfigure(0, weight=1)
-                        
-                        # Set fixed width and max height
-                        self.configure(width=280)
-                        self.maxHeight = 120
-                        
-                        # Header with subject and group
-                        header_text = session.get('subject_name', 'Unknown')
-                        if session.get('group', 1) > 1:
-                            header_text += f" (G{session['group']})"
-                        
-                        header = tk.Label(self, text=header_text, font=("Arial Bold", 11),
-                                bg='#e0e0e0', anchor='w', wraplength=260)
-                        header.grid(row=0, column=0, columnspan=2, sticky='ew', 
-                                padx=2, pady=(2,0))
-                        
-                        # Fix width of header
-                        header.configure(width=30)
-                        
-                        # Teacher name
-                        if session.get('teachers'):
-                            teacher_name = session['teachers'][0].get('name', 'Unknown')
-                            tk.Label(self, text=teacher_name, font=("Arial", 10),
-                                    bg='#f5f5f5', wraplength=280).grid(
-                                    row=1, column=0, columnspan=2, sticky='w', padx=2)
-                        
-                        # Student count and toggle button
-                        students = [s.get('name', 'Unknown') for s in session.get('students', [])]
-                        if students:
-                            tk.Label(self, text=f"Students: {len(students)}", 
-                                    font=("Arial", 9), bg='#f5f5f5').grid(
-                                    row=2, column=0, sticky='w', padx=2)
-                            
-                            def toggle_students():
-                                if not hasattr(self, 'expanded'):
-                                    self.expanded = False
-                                    self.scrollable_frame = tk.Frame(self)
-                                    
-                                    self.student_canvas = tk.Canvas(self.scrollable_frame, 
-                                                                  width=260,
-                                                                  height=1,
-                                                                  highlightthickness=0)
-                                    self.student_scrollbar = tk.Scrollbar(self.scrollable_frame, 
-                                                                        orient="vertical",
-                                                                        command=self.student_canvas.yview)
-                                    self.student_frame = tk.Frame(self.student_canvas)
-                                    
-                                    # Configure canvas and scrolling
-                                    self.student_canvas.configure(yscrollcommand=self.student_scrollbar.set)
-                                    
-                                    # Add student names
-                                    for student in students:
-                                        label = tk.Label(self.student_frame, 
-                                                       text=student,
-                                                       font=("Arial", 9),
-                                                       wraplength=230,
-                                                       anchor='w',
-                                                       width=30)  # Fixed width for student names
-                                        label.pack(fill='x', padx=2)
-                                    
-                                    # Create window in canvas with fixed width
-                                    self.canvas_frame = self.student_canvas.create_window(
-                                        (0, 0),
-                                        window=self.student_frame,
-                                        anchor='nw',
-                                        width=240
-                                    )
-                                    
-                                    def on_frame_configure(e):
-                                        # Calculate actual content height
-                                        content_height = sum(c.winfo_reqheight() for c in self.student_frame.winfo_children())
-                                        # Set scroll region with fixed width and limited height
-                                        self.student_canvas.configure(
-                                            scrollregion=(0, 0, 240, content_height)
-                                        )
-                                    self.student_frame.bind('<Configure>', on_frame_configure)
-
-                                try:
-                                    self.expanded = not self.expanded
-                                    if self.expanded:
-                                        self.scrollable_frame.grid(row=3, column=0, columnspan=2, sticky='ew')
-                                        self.student_canvas.pack(side='left', fill='both', expand=True)
-                                        self.student_scrollbar.pack(side='right', fill='y')
-                                        
-                                        # Set fixed height for student list
-                                        max_height = min(len(students) * 20, 100)
-                                        self.student_canvas.configure(height=max_height)
-                                        # Only show scrollbar if content exceeds visible area
-                                        total_height = len(students) * 20
-                                        if total_height > max_height:
-                                            self.student_scrollbar.pack(side='right', fill='y')
-                                        else:
-                                            self.student_scrollbar.pack_forget()
-                                        self.toggle_btn.config(text="Hide")
-                                        
-                                        # Bind mousewheel when expanded
-                                        bind_mousewheel(self.student_canvas, self.student_canvas)
-                                    else:
-                                        self.scrollable_frame.grid_remove()
-                                        self.toggle_btn.config(text="Show")
-                                        # Unbind mousewheel when collapsed
-                                        unbind_mousewheel(self.student_canvas)
-                                except Exception as e:
-                                    logger.error(f"Error toggling students: {e}")
-                            
-                            self.toggle_btn = tk.Button(self, text="Show",
-                                                      command=toggle_students)
-                            self.toggle_btn.grid(row=2, column=1, sticky='e',
-                                               padx=2, pady=2)
-
-                # Create cells with scroll support
-                for day in range(4):  # Explicitly handle all possible days
-                    for period in range(10):  # Explicitly handle all possible periods
-                        try:
-                            # Get sessions for this slot if they exist
-                            sessions = []
-                            if str(day) in schedule_data.get('days', {}) and \
-                               str(period) in schedule_data['days'][str(day)]:
-                                sessions = schedule_data['days'][str(day)][str(period)]
-                            
-                            # Create cell container with fixed size
-                            cell = tk.Frame(timetable_frame, relief="solid", bd=1)
-                            cell.grid(row=period+1, column=day+1, padx=2, pady=2, sticky="nsew")
-                            cell.grid_propagate(False)
-                            cell.configure(width=300, height=120)
-                            
-                            if len(sessions) > 1:
-                                # Multiple sessions - create scrollable display
-                                canvas = tk.Canvas(cell, bd=0, highlightthickness=0)
-                                scrollbar = tk.Scrollbar(cell, orient="vertical", command=canvas.yview)
-                                scrollable_frame = tk.Frame(canvas)
+                        if schedule_data and str(day) in schedule_data.get('days', {}):
+                            sessions = schedule_data['days'][str(day)].get(str(hour-1), [])
+                            if sessions:
+                                inner_frame = tk.Frame(cell)
+                                inner_frame.pack(fill=tk.BOTH, expand=True)
                                 
-                                # Configure scrolling
-                                scrollable_frame.bind("<Configure>",
-                                    lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
-                                
-                                # Create window in canvas
-                                canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-                                
-                                # Add sessions to scrollable frame
-                                for idx, session in enumerate(sessions):
-                                    if idx > 0:
-                                        sep = tk.Frame(scrollable_frame, height=2, bg='#d0d0d0')
-                                        sep.pack(fill='x', pady=4, padx=2)
-                                    
-                                    session_frame = SessionDisplay(scrollable_frame, session)
-                                    session_frame.pack(fill='x', padx=2, pady=(2 if idx==0 else 0))
-                                
-                                # Calculate content height
-                                content_height = sum(c.winfo_reqheight() for c in scrollable_frame.winfo_children())
-                                visible_height = min(content_height, 120)  # Limit to cell height
-                                
-                                # Configure canvas with fixed dimensions
-                                canvas.configure(
-                                    width=280,
-                                    height=visible_height,
-                                    scrollregion=(0, 0, 280, content_height)
-                                )
-                                
-                                # Only show scrollbar if needed
-                                if content_height > visible_height:
-                                    scrollbar.pack(side="right", fill="y")
-                                canvas.pack(side="left", fill="both", expand=True)
-                                
-                                # Bind mousewheel for timetable cells
-                                bind_mousewheel(canvas, canvas)
-                                bind_mousewheel(scrollable_frame, canvas)
-                                
-                            elif len(sessions) == 1:
-                                # Single session display
-                                SessionDisplay(cell, sessions[0]).pack(fill='x', padx=2, pady=2)
-                        
-                        except Exception as e:
-                            logger.error(f"Error displaying slot {day},{period}: {e}")
-                            continue
-                
-                # Rest of the function remains the same
-                meta = schedule_data.get('metadata', {})
-                sessions = meta.get('total_sessions', 0)
-                meta_label.config(text=f"Total sessions: {sessions}")
-                
-            except FileNotFoundError:
-                messagebox.showerror("Error", "No saved schedule found")
-            except Exception as e:
-                messagebox.showerror("Error", f"Failed to load schedule: {str(e)}")
-                logger.exception("Schedule display error")
+                                for session in sessions:
+                                    if (filter_subject is None or 
+                                        session['subject_name'] == filter_subject):
+                                        card = create_session_card(inner_frame, session)
+                                        card.pack(fill=tk.X, padx=2, pady=1)
 
-        def display_validation_results(validation_stats):
-            """Display validation results in the validation text widget"""
-            validation_text.config(state='normal')
-            validation_text.delete(1.0, tk.END)
-            
-            # Display conflicts
-            validation_text.insert(tk.END, "=== Validation Results ===\n\n")
-            validation_text.insert(tk.END, "Conflicts:\n")
-            validation_text.insert(tk.END, f"- Student conflicts: {validation_stats['student_conflicts']}\n")
-            validation_text.insert(tk.END, f"- Teacher conflicts: {validation_stats['teacher_conflicts']}\n\n")
-            
-            # Display subject hours
-            validation_text.insert(tk.END, "Subject Hours:\n")
-            for sid, scheduled in validation_stats['subject_hours'].items():
-                required = validation_stats['required_hours'][sid]
-                status = "✓" if scheduled == required else "✗"
-                validation_text.insert(tk.END, f"- Subject {sid}: {scheduled}/{required} {status}\n")
-            
-            # Display teacher loads
-            validation_text.insert(tk.END, "\nTeacher Daily Loads:\n")
-            for tid, loads in validation_stats['teacher_daily_load'].items():
-                validation_text.insert(tk.END, f"- Teacher {tid}:\n")
-                for day, count in loads.items():
-                    validation_text.insert(tk.END, f"  Day {day+1}: {count}\n")
-            
-            validation_text.config(state='disabled')
-
-        def toggle_algorithm():
-            nonlocal algorithm_thread, is_running
-            
-            if not is_running:
-                try:
-                    max_iter = int(iter_entry.get())
-                    if max_iter <= 0:
-                        raise ValueError("Iterations must be positive")
-                except ValueError as e:
-                    messagebox.showerror("Error", "Invalid iteration count")
-                    return
-
-                is_running = True
-                self.stop_requested = False  # Add stop flag
-                start_btn.config(text="Stop Algorithm")
-                clear_timetable()
-                log_text.delete(1.0, tk.END)
-                
-                def run_algorithm():
-                    try:
-                        from algorithm import (
-                            load_data, build_sessions, solve_timetable,
-                            format_schedule_output, validate_final_schedule, logger,
-                            MAX_SOLVER_ITERATIONS
-                        )
-                        
-                        global MAX_SOLVER_ITERATIONS
-                        MAX_SOLVER_ITERATIONS = max_iter
-                        
-                        logger.info("Loading data...")
-                        teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
-                        
-                        if not teachers or not subjects or not students_raw:
-                            raise ValueError("Missing required data")
-                        
-                        logger.info("Building sessions...")
-                        sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
-                        
-                        if not sessions:
-                            raise ValueError("Failed to create valid sessions")
-                        
-                        logger.info("Starting solver...")
-                        schedule, students_dict = solve_timetable(sessions, time_limit=1200, stop_flag=lambda: self.stop_requested)
-                        
-                        if schedule and not self.stop_requested:
-                            logger.info("Schedule found, validating...")
-                            formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
-                            validation_stats = validate_final_schedule(schedule, sessions, subjects, teachers)
-                            
-                            with open('schedule_output.json', 'w') as f:
-                                json.dump(formatted_schedule, f, indent=2)
-                                
-                            wind.after(0, display_schedule)
-                            wind.after(0, lambda: display_validation_results(validation_stats))
-                            wind.after(0, lambda: messagebox.showinfo("Success", 
-                                     f"Schedule generated with {formatted_schedule['metadata']['total_sessions']} sessions"))
-                        elif self.stop_requested:
-                            logger.info("Algorithm stopped by user")
-                        else:
-                            raise ValueError("Could not find valid schedule")
-                            
-                    except Exception as e:
-                        if not self.stop_requested:  # Only show error if not stopped by user
-                            wind.after(0, lambda: messagebox.showerror("Error", str(e)))
-                            logger.exception("Algorithm error")
-                    finally:
-                        wind.after(0, stop_algorithm)
-
-                algorithm_thread = threading.Thread(target=run_algorithm)
-                algorithm_thread.daemon = True
-                algorithm_thread.start()
-            else:
-                # Request stop
-                self.stop_requested = True
-                logger.info("Stopping algorithm...")
-                start_btn.config(text="Stopping...", state="disabled")
-
-        def stop_algorithm():
-            nonlocal algorithm_thread, is_running
-            is_running = False
             algorithm_thread = None
-            start_btn.config(text="Start Algorithm", state="normal")
+            is_running = False
 
-        # Add timetable to left pane
-        main_canvas = tk.Canvas(left_pane)
-        main_scrollbar = tk.Scrollbar(left_pane, orient="vertical", command=main_canvas.yview)
-        
-        # Create frame that will contain the timetable
-        timetable_frame = tk.Frame(main_canvas)
-        
-        # Configure scrolling
-        def configure_scroll(event):
-            main_canvas.configure(scrollregion=main_canvas.bbox("all"))
-            # Set minimum width for the canvas
-            width = max(event.width, timetable_frame.winfo_reqwidth())
-            main_canvas.configure(width=width)
-        
-        timetable_frame.bind('<Configure>', configure_scroll)
-        
-        # Create window in canvas with explicit minimum width
-        main_canvas.create_window((0, 0), window=timetable_frame, anchor='nw')
-        
-        # Configure canvas scrolling and minimum size
-        main_canvas.configure(yscrollcommand=main_scrollbar.set)
-        main_canvas.configure(width=1200)  # Set minimum width
-        
-        # Pack scrolling components
-        main_scrollbar.pack(side="right", fill="y")
-        main_canvas.pack(side="left", fill="both", expand=True)
+            def toggle_algorithm():
+                nonlocal algorithm_thread, is_running
+                
+                if not is_running:
+                    try:
+                        max_iter = int(iter_entry.get())
+                        if max_iter <= 0:
+                            raise ValueError("Iterations must be positive")
+                    except ValueError:
+                        messagebox.showerror("Error", "Invalid iteration count")
+                        return
 
-        # Modify create_timetable function to set fixed column widths
-        def create_timetable():
-            """Create empty timetable with optimized layout"""
-            for widget in timetable_frame.winfo_children():
-                widget.destroy()
+                    is_running = True
+                    self.stop_requested = False
+                    start_btn.config(text="Stop Algorithm")
+                    update_timetable_display()
+                    log_text.delete(1.0, tk.END)
+                    
+                    def run_algorithm():
+                        try:
+                            from algorithm import (
+                                load_data, build_sessions, solve_timetable,
+                                format_schedule_output, validate_final_schedule, logger,
+                                MAX_SOLVER_ITERATIONS
+                            )
+                            
+                            global MAX_SOLVER_ITERATIONS
+                            MAX_SOLVER_ITERATIONS = max_iter
+                            
+                            logger.info("Loading data...")
+                            teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
+                            
+                            if not teachers or not subjects or not students_raw:
+                                raise ValueError("Missing required data")
+                            
+                            logger.info("Building sessions...")
+                            sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
+                            
+                            if not sessions:
+                                raise ValueError("Failed to create valid sessions")
+                            
+                            logger.info("Starting solver...")
+                            schedule, students_dict = solve_timetable(sessions, time_limit=1200, stop_flag=lambda: self.stop_requested)
+                            
+                            if schedule and not self.stop_requested:
+                                logger.info("Schedule found, validating...")
+                                formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
+                                validation_stats = validate_final_schedule(schedule, sessions, subjects, teachers)
+                                
+                                with open('schedule_output.json', 'w') as f:
+                                    json.dump(formatted_schedule, f, indent=2)
+                                    
+                                wind.after(0, lambda: update_timetable_display(formatted_schedule))
+                                wind.after(0, lambda: display_validation_results(validation_stats))
+                                wind.after(0, lambda: messagebox.showinfo("Success", 
+                                        f"Schedule generated with {formatted_schedule['metadata']['total_sessions']} sessions"))
+                            elif self.stop_requested:
+                                logger.info("Algorithm stopped by user")
+                            else:
+                                raise ValueError("Could not find valid schedule")
+                                
+                        except Exception as e:
+                            if not self.stop_requested:
+                                wind.after(0, lambda: messagebox.showerror("Error", str(e)))
+                                logger.exception("Algorithm error")
+                        finally:
+                            wind.after(0, stop_algorithm)
 
-            # Configure grid with fixed size
-            tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold"), 
-                    bg='#e0e0e0', width=8).grid(row=0, column=0, padx=2, pady=2)
+                    algorithm_thread = threading.Thread(target=run_algorithm)
+                    algorithm_thread.daemon = True
+                    algorithm_thread.start()
+                else:
+                    # Request stop
+                    self.stop_requested = True
+                    logger.info("Stopping algorithm...")
+                    start_btn.config(text="Stopping...", state="disabled")
+
+            def stop_algorithm():
+                nonlocal algorithm_thread, is_running
+                is_running = False
+                algorithm_thread = None
+                start_btn.config(text="Start Algorithm", state="normal")
+
+            def display_validation_results(validation_stats):
+                validation_text.config(state='normal')
+                validation_text.delete(1.0, tk.END)
+                
+                validation_text.insert(tk.END, "=== Validation Results ===\n\n")
+                validation_text.insert(tk.END, "Conflicts:\n")
+                validation_text.insert(tk.END, f"- Student conflicts: {validation_stats['student_conflicts']}\n")
+                validation_text.insert(tk.END, f"- Teacher conflicts: {validation_stats['teacher_conflicts']}\n\n")
+                
+                validation_text.insert(tk.END, "Subject Hours:\n")
+                for sid, scheduled in validation_stats['subject_hours'].items():
+                    required = validation_stats['required_hours'][sid]
+                    status = "✓" if scheduled == required else "✗"
+                    validation_text.insert(tk.END, f"- Subject {sid}: {scheduled}/{required} {status}\n")
+                
+                validation_text.insert(tk.END, "\nTeacher Daily Loads:\n")
+                for tid, loads in validation_stats['teacher_daily_load'].items():
+                    validation_text.insert(tk.END, f"- Teacher {tid}:\n")
+                    for day, count in loads.items():
+                        validation_text.insert(tk.END, f"  Day {day+1}: {count}\n")
+                
+                validation_text.config(state='disabled')
+
+            # Update button commands (moved after function definitions)
+            start_btn.configure(command=toggle_algorithm)
+            view_btn.configure(command=lambda: display_schedule())
+
+            # Initialize empty timetable
+            update_timetable_display()
+
+            # Configure logging
+            class TextHandler(logging.Handler):
+                def emit(self, record):
+                    msg = self.format(record)
+                    wind.after(0, log_text.insert, tk.END, msg + '\n')
+                    wind.after(0, log_text.see, tk.END)
             
-            days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
-            for i, day in enumerate(days):
-                tk.Label(timetable_frame, text=day, font=("Arial", 12, "bold"), 
-                        bg='#e0e0e0', width=35).grid(row=0, column=i+1, padx=2, pady=2)
+            text_handler = TextHandler()
+            text_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+            logger = logging.getLogger()
+            logger.addHandler(text_handler)
 
-            # Create cells with consistent size
-            for hour in range(10):
-                tk.Label(timetable_frame, text=str(hour+1), font=("Arial", 12),
-                        bg='#e0e0e0', width=8).grid(row=hour+1, column=0, padx=2, pady=2)
-                
-                for day in range(4):
-                    cell = tk.Frame(timetable_frame, relief="solid", borderwidth=1)
-                    cell.grid(row=hour+1, column=day+1, padx=2, pady=2, sticky="nsew")
-                    cell.configure(width=300, height=120)
-                    cell.grid_propagate(False)  # Prevent size changes
-                    cell.grid_columnconfigure(0, weight=1)
-        
-            # Configure grid column weights
-            for i in range(5):  # 0 for hours column + 4 for days
-                timetable_frame.grid_columnconfigure(i, weight=1)
+            # Update the display_schedule function to use the new layout
+            def display_schedule():
+                try:
+                    with open('schedule_output.json', 'r') as f:
+                        schedule_data = json.load(f)
+                    update_timetable_display(schedule_data)
+                    # Update subject filter list
+                    subject_listbox.delete(0, tk.END)
+                    subjects = set()
+                    for day in schedule_data.get('days', {}).values():
+                        for period in day.values():
+                            for session in period:
+                                subjects.add(session['subject_name'])
+                    for subject in sorted(subjects):
+                        subject_listbox.insert(tk.END, subject)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to load schedule: {str(e)}")
 
-        # Buttons after toggle_algorithm is defined
-        start_btn = tk.Button(controls_left, text="Start Algorithm", 
-                            font=("Arial", 14), command=toggle_algorithm)
-        start_btn.pack(side=tk.LEFT, padx=5)
+            # Add filter functionality
+            def apply_filter(*args):
+                if subjects_var.get() == "selected":
+                    selected = subject_listbox.curselection()
+                    if selected:
+                        subject = subject_listbox.get(selected[0])
+                        try:
+                            with open('schedule_output.json', 'r') as f:
+                                schedule_data = json.load(f)
+                            update_timetable_display(schedule_data, subject)
+                        except Exception:
+                            pass
+                else:
+                    display_schedule()
 
-        view_btn = tk.Button(controls_left, text="View Saved Schedule",
-                           font=("Arial", 14), command=lambda: display_schedule())
-        view_btn.pack(side=tk.LEFT, padx=5)
-
-        # Status label (right side)
-        meta_label = tk.Label(control_frame, font=("Arial", 12))
-        meta_label.pack(side=tk.RIGHT, padx=5)
-
-        # Configure logging
-        class TextHandler(logging.Handler):
-            def emit(self, record):
-                msg = self.format(record)
-                wind.after(0, log_text.insert, tk.END, msg + '\n')
-                wind.after(0, log_text.see, tk.END)
-                
-        # Configure logging
-        text_handler = TextHandler()
-        text_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
-        logger = logging.getLogger()
-        logger.addHandler(text_handler)
-
-        # Create initial empty timetable
-        create_timetable()
-
-        # Bind mousewheel for timetable view
-        bind_mousewheel(main_canvas, main_canvas)
-        bind_mousewheel(timetable_frame, main_canvas)
+            subjects_var.trace('w', apply_filter)
+            subject_listbox.bind('<<ListboxSelect>>', apply_filter)
 
 MainGUI()
-
-
