@@ -1541,54 +1541,88 @@ class MainGUI:
             wind.title("Algorithm")
             wind.state('zoomed')  # Start maximized
             wind.grab_set()
-
-            # Main container
+            
+            def on_window_restore(event=None):
+                if wind.state() == 'normal':
+                    wind.grab_set()
+                    
+            wind.bind('<Map>', on_window_restore)
+            wind.protocol("WM_DELETE_WINDOW", wind.destroy)
+            
             main_container = tk.PanedWindow(wind, orient=tk.HORIZONTAL)
             main_container.pack(fill=tk.BOTH, expand=True)
 
-            # Left side - Timetable
+            # Left side - Timetable (increased minimum width)
             left_frame = tk.Frame(main_container)
             main_container.add(left_frame)
-
-            # Right side - Controls
-            right_frame = tk.Frame(main_container, width=400)
+            
+            # Right side - Controls with reduced width
+            right_frame = tk.Frame(main_container, width=150)  # Reduced width
             main_container.add(right_frame)
+            right_frame.pack_propagate(False)
 
-            # Control panel
+            main_container.paneconfig(left_frame, minsize=1000)  # Increased minimum size
+            main_container.paneconfig(right_frame, minsize=150, width=150)  # Reduced width
+
+            # Controls section - simplified without listbox
             control_panel = tk.LabelFrame(right_frame, text="Controls", font=("Arial", 12, "bold"))
             control_panel.pack(fill=tk.X, padx=5, pady=5)
 
-            # Iteration controls
-            iter_frame = tk.Frame(control_panel)
-            iter_frame.pack(fill=tk.X, padx=5, pady=5)
-            
-            tk.Label(iter_frame, text="Max Iterations:", font=("Arial", 12)).pack(side=tk.LEFT)
-            iter_entry = tk.Entry(iter_frame, width=10, font=("Arial", 12))
-            iter_entry.insert(0, "2000")
-            iter_entry.pack(side=tk.LEFT, padx=5)
-
-            # Algorithm controls
             btn_frame = tk.Frame(control_panel)
             btn_frame.pack(fill=tk.X, padx=5, pady=5)
             
             start_btn = tk.Button(btn_frame, text="Start Algorithm", font=("Arial", 12))
-            start_btn.pack(side=tk.LEFT, padx=5)
+            start_btn.pack(fill=tk.X, padx=5, pady=2)
             
             view_btn = tk.Button(btn_frame, text="View Saved Schedule", font=("Arial", 12))
-            view_btn.pack(side=tk.LEFT, padx=5)
+            view_btn.pack(fill=tk.X, padx=5, pady=2)
 
-            # Filter controls
+            # Filter controls with notebook and listboxes - kept unchanged
             filter_frame = tk.LabelFrame(right_frame, text="Filters", font=("Arial", 12, "bold"))
-            filter_frame.pack(fill=tk.X, padx=5, pady=5)
+            filter_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            subjects_var = tk.StringVar(value="all")
-            tk.Radiobutton(filter_frame, text="Show All", variable=subjects_var, 
+            filter_var = tk.StringVar(value="all")
+            tk.Radiobutton(filter_frame, text="Show All", variable=filter_var, 
                           value="all", font=("Arial", 10)).pack(anchor=tk.W)
-            tk.Radiobutton(filter_frame, text="Show Selected Subject", variable=subjects_var,
-                          value="selected", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Subject", variable=filter_var,
+                          value="subject", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Teacher", variable=filter_var,
+                          value="teacher", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Student", variable=filter_var,
+                          value="student", font=("Arial", 10)).pack(anchor=tk.W)
 
-            subject_listbox = tk.Listbox(filter_frame, height=5, font=("Arial", 10))
-            subject_listbox.pack(fill=tk.X, padx=5, pady=5)
+            # Create listbox variables first
+            subject_listbox = None
+            teacher_listbox = None  
+            student_listbox = None
+
+            filter_notebook = ttk.Notebook(filter_frame)
+            filter_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Subject tab
+            subject_frame = tk.Frame(filter_notebook) 
+            filter_notebook.add(subject_frame, text="Subject")
+            subject_listbox = tk.Listbox(subject_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            subject_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Teacher tab
+            teacher_frame = tk.Frame(filter_notebook)
+            filter_notebook.add(teacher_frame, text="Teacher")
+            teacher_listbox = tk.Listbox(teacher_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            teacher_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Student tab
+            student_frame = tk.Frame(filter_notebook)
+            filter_notebook.add(student_frame, text="Student")
+            student_listbox = tk.Listbox(student_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            student_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Log output
+            log_text = tk.Text(right_frame, font=("Courier", 10), height=8)
+            log_scroll = tk.Scrollbar(right_frame, command=log_text.yview)
+            log_text.configure(yscrollcommand=log_scroll.set)
+            log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
             # Validation panel
             validation_frame = tk.LabelFrame(right_frame, text="Validation Results", font=("Arial", 12, "bold"))
@@ -1600,7 +1634,7 @@ class MainGUI:
             validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
             validation_text.pack(fill=tk.BOTH, expand=True)
 
-            # Timetable canvas
+            # Timetable canvas with mouse wheel binding
             canvas_frame = tk.Frame(left_frame)
             canvas_frame.pack(fill=tk.BOTH, expand=True)
 
@@ -1609,6 +1643,15 @@ class MainGUI:
             main_scrollbar_x = tk.Scrollbar(canvas_frame, orient="horizontal", command=main_canvas.xview)
             
             timetable_frame = tk.Frame(main_canvas)
+
+            # Add mouse wheel bindings
+            def on_mouse_wheel(event):
+                if event.state == 0:  # No modifier keys
+                    main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+                elif event.state & 1:  # Shift key
+                    main_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+            
+            main_canvas.bind_all("<MouseWheel>", on_mouse_wheel)
             
             def on_configure(event):
                 main_canvas.configure(scrollregion=main_canvas.bbox("all"))
@@ -1662,7 +1705,7 @@ class MainGUI:
                 
                 return frame
 
-            def update_timetable_display(schedule_data=None, filter_subject=None):
+            def update_timetable_display(schedule_data=None, filter_type=None, filter_value=None):
                 for widget in timetable_frame.winfo_children():
                     widget.destroy()
                 
@@ -1695,8 +1738,15 @@ class MainGUI:
                                 inner_frame.pack(fill=tk.BOTH, expand=True)
                                 
                                 for session in sessions:
-                                    if (filter_subject is None or 
-                                        session['subject_name'] == filter_subject):
+                                    show_session = True
+                                    if filter_type == "subject":
+                                        show_session = session['subject_name'] == filter_value
+                                    elif filter_type == "teacher":
+                                        show_session = any(t['name'] == filter_value for t in session['teachers'])
+                                    elif filter_type == "student":
+                                        show_session = any(s['name'] == filter_value for s in session['students'])
+                                    
+                                    if show_session:
                                         card = create_session_card(inner_frame, session)
                                         card.pack(fill=tk.X, padx=2, pady=1)
 
@@ -1707,14 +1757,6 @@ class MainGUI:
                 nonlocal algorithm_thread, is_running
                 
                 if not is_running:
-                    try:
-                        max_iter = int(iter_entry.get())
-                        if max_iter <= 0:
-                            raise ValueError("Iterations must be positive")
-                    except ValueError:
-                        messagebox.showerror("Error", "Invalid iteration count")
-                        return
-
                     is_running = True
                     self.stop_requested = False
                     start_btn.config(text="Stop Algorithm")
@@ -1725,12 +1767,8 @@ class MainGUI:
                         try:
                             from algorithm import (
                                 load_data, build_sessions, solve_timetable,
-                                format_schedule_output, validate_final_schedule, logger,
-                                MAX_SOLVER_ITERATIONS
+                                format_schedule_output, validate_final_schedule, logger
                             )
-                            
-                            global MAX_SOLVER_ITERATIONS
-                            MAX_SOLVER_ITERATIONS = max_iter
                             
                             logger.info("Loading data...")
                             teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
@@ -1755,6 +1793,34 @@ class MainGUI:
                                 with open('schedule_output.json', 'w') as f:
                                     json.dump(formatted_schedule, f, indent=2)
                                     
+                                # Populate filter lists
+                                def update_filters():
+                                    subject_listbox.delete(0, tk.END)
+                                    teacher_listbox.delete(0, tk.END)
+                                    student_listbox.delete(0, tk.END)
+                                    
+                                    subjects = set()
+                                    teachers = set()
+                                    students = set()
+                                    
+                                    for day in formatted_schedule.get('days', {}).values():
+                                        for period in day.values():
+                                            for session in period:
+                                                subjects.add(session['subject_name'])
+                                                for teacher in session['teachers']:
+                                                    teachers.add(teacher['name'])
+                                                for student in session['students']:
+                                                    students.add(student['name'])
+                                    
+                                    # Populate the listboxes with sorted items
+                                    for subject in sorted(subjects):
+                                        subject_listbox.insert(tk.END, subject)
+                                    for teacher in sorted(teachers):
+                                        teacher_listbox.insert(tk.END, teacher)
+                                    for student in sorted(students):
+                                        student_listbox.insert(tk.END, student)
+
+                                wind.after(0, update_filters)
                                 wind.after(0, lambda: update_timetable_display(formatted_schedule))
                                 wind.after(0, lambda: display_validation_results(validation_stats))
                                 wind.after(0, lambda: messagebox.showinfo("Success", 
@@ -1833,35 +1899,89 @@ class MainGUI:
                 try:
                     with open('schedule_output.json', 'r') as f:
                         schedule_data = json.load(f)
-                    update_timetable_display(schedule_data)
-                    # Update subject filter list
+                    
+                    # Clear and update filter lists
                     subject_listbox.delete(0, tk.END)
+                    teacher_listbox.delete(0, tk.END)
+                    student_listbox.delete(0, tk.END)
+                    
                     subjects = set()
+                    teachers = set()
+                    students = set()
+                    
                     for day in schedule_data.get('days', {}).values():
                         for period in day.values():
                             for session in period:
                                 subjects.add(session['subject_name'])
+                                for teacher in session['teachers']:
+                                    teachers.add(teacher['name'])
+                                for student in session['students']:
+                                    students.add(student['name'])
+                
+                    # Populate the listboxes with sorted items
                     for subject in sorted(subjects):
                         subject_listbox.insert(tk.END, subject)
+                    for teacher in sorted(teachers):
+                        teacher_listbox.insert(tk.END, teacher)
+                    for student in sorted(students):
+                        student_listbox.insert(tk.END, student)
+                        
+                    update_timetable_display(schedule_data)
                 except Exception as e:
                     messagebox.showerror("Error", f"Failed to load schedule: {str(e)}")
 
-            # Add filter functionality
             def apply_filter(*args):
-                if subjects_var.get() == "selected":
-                    selected = subject_listbox.curselection()
-                    if selected:
-                        subject = subject_listbox.get(selected[0])
-                        try:
-                            with open('schedule_output.json', 'r') as f:
-                                schedule_data = json.load(f)
-                            update_timetable_display(schedule_data, subject)
-                        except Exception:
-                            pass
-                else:
-                    display_schedule()
+                filter_type = filter_var.get()
+                try:
+                    with open('schedule_output.json', 'r') as f:
+                        schedule_data = json.load(f)
+                    
+                    if filter_type == "subject":
+                        selected = subject_listbox.curselection()
+                        if selected:
+                            filter_value = subject_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "subject", filter_value)
+                    elif filter_type == "teacher":
+                        selected = teacher_listbox.curselection()
+                        if selected:
+                            filter_value = teacher_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "teacher", filter_value)
+                    elif filter_type == "student":
+                        selected = student_listbox.curselection()
+                        if selected:
+                            filter_value = student_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "student", filter_value)
+                    else:
+                        update_timetable_display(schedule_data)
+                except Exception:
+                    pass
 
-            subjects_var.trace('w', apply_filter)
+            # Move bindings to after listbox creation
+            filter_var.trace('w', apply_filter)
             subject_listbox.bind('<<ListboxSelect>>', apply_filter)
+            teacher_listbox.bind('<<ListboxSelect>>', apply_filter)
+            student_listbox.bind('<<ListboxSelect>>', apply_filter)
+
+            # Add these functions after creating the widgets but before the mainloop
+            def on_enter_listbox(event):
+                # Unbind main canvas scrolling when hovering over listboxes
+                main_canvas.unbind_all("<MouseWheel>")
+                
+            def on_leave_listbox(event):
+                # Rebind main canvas scrolling when leaving listboxes
+                main_canvas.bind_all("<MouseWheel>", on_mouse_wheel)
+
+            # Add mouse enter/leave bindings to the listboxes
+            for lb in [subject_listbox, teacher_listbox, student_listbox]:
+                lb.bind('<Enter>', on_enter_listbox)
+                lb.bind('<Leave>', on_leave_listbox)
+            
+            # Add bindings for validation text
+            validation_text.bind('<Enter>', on_enter_listbox)
+            validation_text.bind('<Leave>', on_leave_listbox)
+
+            # Add bindings for log text
+            log_text.bind('<Enter>', on_enter_listbox)
+            log_text.bind('<Leave>', on_leave_listbox)
 
 MainGUI()
