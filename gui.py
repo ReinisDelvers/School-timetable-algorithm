@@ -1557,12 +1557,12 @@ class MainGUI:
             main_container.add(left_frame)
             
             # Right side - Controls with reduced width
-            right_frame = tk.Frame(main_container, width=150)  # Reduced width
+            right_frame = tk.Frame(main_container, width=250)  # Reduced to 250
             main_container.add(right_frame)
             right_frame.pack_propagate(False)
 
-            main_container.paneconfig(left_frame, minsize=1000)  # Increased minimum size
-            main_container.paneconfig(right_frame, minsize=150, width=150)  # Reduced width
+            main_container.paneconfig(left_frame, minsize=900)  # Increased left side
+            main_container.paneconfig(right_frame, minsize=250, width=250)  # Fixed width to 250
 
             # Controls section - simplified without listbox
             control_panel = tk.LabelFrame(right_frame, text="Controls", font=("Arial", 12, "bold"))
@@ -1577,7 +1577,7 @@ class MainGUI:
             view_btn = tk.Button(btn_frame, text="View Saved Schedule", font=("Arial", 12))
             view_btn.pack(fill=tk.X, padx=5, pady=2)
 
-            # Filter controls with notebook and listboxes - kept unchanged
+            # Filter controls with notebook and listboxes
             filter_frame = tk.LabelFrame(right_frame, text="Filters", font=("Arial", 12, "bold"))
             filter_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
@@ -1599,36 +1599,29 @@ class MainGUI:
             filter_notebook = ttk.Notebook(filter_frame)
             filter_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            # Subject tab
+            # Subject tab with larger height
             subject_frame = tk.Frame(filter_notebook) 
             filter_notebook.add(subject_frame, text="Subject")
-            subject_listbox = tk.Listbox(subject_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            subject_listbox = tk.Listbox(subject_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
             subject_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            # Teacher tab
+            # Teacher tab with larger height 
             teacher_frame = tk.Frame(filter_notebook)
             filter_notebook.add(teacher_frame, text="Teacher")
-            teacher_listbox = tk.Listbox(teacher_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            teacher_listbox = tk.Listbox(teacher_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
             teacher_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
-            # Student tab
+            # Student tab with larger height
             student_frame = tk.Frame(filter_notebook)
             filter_notebook.add(student_frame, text="Student")
-            student_listbox = tk.Listbox(student_frame, selectmode=tk.SINGLE, font=("Arial", 10))
+            student_listbox = tk.Listbox(student_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
             student_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-            # Log output
-            log_text = tk.Text(right_frame, font=("Courier", 10), height=8)
-            log_scroll = tk.Scrollbar(right_frame, command=log_text.yview)
-            log_text.configure(yscrollcommand=log_scroll.set)
-            log_scroll.pack(side=tk.RIGHT, fill=tk.Y)
-            log_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
 
             # Validation panel
             validation_frame = tk.LabelFrame(right_frame, text="Validation Results", font=("Arial", 12, "bold"))
             validation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
             
-            validation_text = tk.Text(validation_frame, font=("Courier", 10))
+            validation_text = tk.Text(validation_frame, font=("Courier", 10), height=8)
             validation_scroll = tk.Scrollbar(validation_frame, command=validation_text.yview)
             validation_text.configure(yscrollcommand=validation_scroll.set)
             validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
@@ -1761,8 +1754,7 @@ class MainGUI:
                     self.stop_requested = False
                     start_btn.config(text="Stop Algorithm")
                     update_timetable_display()
-                    log_text.delete(1.0, tk.END)
-                    
+
                     def run_algorithm():
                         try:
                             from algorithm import (
@@ -1886,8 +1878,6 @@ class MainGUI:
             class TextHandler(logging.Handler):
                 def emit(self, record):
                     msg = self.format(record)
-                    wind.after(0, log_text.insert, tk.END, msg + '\n')
-                    wind.after(0, log_text.see, tk.END)
             
             text_handler = TextHandler()
             text_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
@@ -1980,8 +1970,5 @@ class MainGUI:
             validation_text.bind('<Enter>', on_enter_listbox)
             validation_text.bind('<Leave>', on_leave_listbox)
 
-            # Add bindings for log text
-            log_text.bind('<Enter>', on_enter_listbox)
-            log_text.bind('<Leave>', on_leave_listbox)
 
 MainGUI()
