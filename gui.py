@@ -1,1144 +1,1974 @@
-import sqlite3
+import tkinter as tk
+from tkinter import ttk, END, messagebox
+from tkinter.messagebox import showerror
+
+import json
+import pandas as pd
 import math
-import logging
-import time
 import threading
-from itertools import groupby
-from functools import lru_cache
-from collections import defaultdict, Counter
-from data import (
-    get_teacher, get_subject, get_student,
-    get_subject_teacher, get_subject_student, get_hour_blocker
-)
-import statistics
-import copy
-import random
-import json  # For reading subject–student mappings
+import logging
 
-# --- Logging setup ---
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from data import add_student, add_subject, add_teacher, add_subject_student, add_subject_teacher, get_student, get_subject, get_teacher, get_subject_teacher, get_subject_student, remove_student, remove_subject, remove_teacher, remove_subject_teacher, remove_subject_student, update_student, update_subject, update_teacher, update_subject_teacher, update_subject_student, hour_blocker_save, get_hour_blocker
 
-# --- Constants ---
-PERIODS_PER_DAY = 10
-DAYS = ["monday", "tuesday", "wednesday", "thursday"]
-STALL_THRESHOLD = 10000       # Stop if no improvement for 10,000 iterations
-LOG_INTERVAL = 1000           # Log status every 1,000 iterations
+options = {"padx": 5, "pady": 5}
 
-# --- Helper Functions ---
-def group_students_by_subjects(subj_students):
-    """Group students who have exactly the same set of subjects."""
-    student_subjects = defaultdict(set)
-    for sid, students in subj_students.items():
-        for student in students:
-            student_subjects[student].add(sid)
+class MainGUI:
+    def __init__(self):
 
-    groups = defaultdict(list)
-    for student, subjects in student_subjects.items():
-        group_key = frozenset(subjects)
-        groups[group_key].append(student)
-
-    student_to_group = {}
-    for subjects, students in groups.items():
-        group_rep = students[0]
-        for student in students:
-            student_to_group[student] = group_rep
-
-    grouped_subj_students = defaultdict(set)
-    for sid, students in subj_students.items():
-        for student in students:
-            grouped_subj_students[sid].add(student_to_group[student])
-
-    return grouped_subj_students, student_to_group
-
-# --- Data Loading ---
-def load_data():
-    teachers = {t[0]: t for t in get_teacher()}
-    subjects = {s[0]: s for s in get_subject()}
-    students_raw = get_student()
-    subject_teachers = get_subject_teacher()
-
-    # Load subject–student relationships (JSON array in row[1])
-    subj_students = {}
-    for row in get_subject_student():
-        subject_ids = json.loads(row[1])
-        student_id = row[3]
-        for sid in subject_ids:
-            subj_students.setdefault(sid, set()).add(student_id)
-
-    # Group students with identical subject sets
-    grouped_subj_students, student_groups = group_students_by_subjects(subj_students)
-
-    hb_row = get_hour_blocker()[0]
-    hour_blocker = {
-        day: [hb_row[i * PERIODS_PER_DAY + p] for p in range(PERIODS_PER_DAY)]
-        for i, day in enumerate(DAYS)
-    }
-
-    original_student_count = len({s for students in subj_students.values() for s in students})
-    grouped_student_count = len({s for students in grouped_subj_students.values() for s in students})
-    logger.info(f"Loaded {len(teachers)} teachers, {len(subjects)} subjects")
-    logger.info(f"Grouped {original_student_count} students into {grouped_student_count} unique combinations")
-
-    # Print subject parameter summary
-    for sid, subj in subjects.items():
-        name = subj[1]
-        required = subj[3]
-        maxpd = subj[4]
-        minpd = max(0, subj[6])
-        logger.info(f"Subject {sid} (“{name}”): requires {required}h/week, maxpd={maxpd}, minpd={minpd}")
-
-    return teachers, subjects, students_raw, subject_teachers, grouped_subj_students, hour_blocker, student_groups
-
-# --- Input Validation ---
-def validate_input_data(teachers, subjects, subject_teachers, subj_students):
-    """
-    Validate that:
-      - Each teacher has at least one available day.
-      - No subject is assigned more teachers than its group count.
-      - Each subject’s required hours fit within assigned teacher’s availability.
-    """
-    errors = []
-
-    # Check that each teacher is available at least one day
-    for tid, teacher in teachers.items():
-        available_days = sum(1 for day in range(4) if teacher[4 + day])
-        if available_days == 0:
-            errors.append(f"Teacher {tid} has no available days")
-
-    # Count teachers per subject
-    subject_teacher_counts = defaultdict(int)
-    for st in subject_teachers:
-        sid, tid = st[1], st[3]
-        subject_teacher_counts[sid] += 1
-
-    # Check subject group counts vs assigned teachers
-    for sid, subj in subjects.items():
-        raw_group_count = subj[2]
-        if subj[7] == 1:
-            # Parallel offerings: skip
-            continue
-        if sid in subject_teacher_counts:
-            teacher_count = subject_teacher_counts[sid]
-            if teacher_count > raw_group_count:
-                errors.append(f"Subject {sid} has {teacher_count} teachers but only {raw_group_count} groups")
-
-    # Check that each subject’s hours fit within assigned teacher’s total availability
-    for st in subject_teachers:
-        sid, tid = st[1], st[3]
-        if sid not in subjects:
-            errors.append(f"Subject {sid} not found for teacher {tid}")
-            continue
-        if tid not in teachers:
-            errors.append(f"Teacher {tid} not found for subject {sid}")
-            continue
-        subj = subjects[sid]
-        teacher = teachers[tid]
-        available_slots = 0
-        for d in range(4):
-            if teacher[4 + d]:
-                available_slots += PERIODS_PER_DAY
-        required_slots = subj[3]
-        if available_slots < required_slots:
-            errors.append(f"Subject {sid} needs {required_slots} slots but teacher {tid} only has {available_slots} available")
-
-    if errors:
-        for err in errors:
-            logger.error(f"Validation error: {err}")
-        return False
-    return True
-
-# --- Session Creation ---
-def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blocker):
-    """
-    For each (subject, teacher) pair, create exactly `hours_per_week` session objects,
-    each requiring 1 hour. Blocks of size `minpd` will be handled later.
-    """
-    if not validate_input_data(teachers, subjects, subject_teachers, subj_students):
-        logger.error("Input data validation failed")
-        return []
-
-    # Count how many sessions we need per subject
-    subject_session_counts = defaultdict(int)
-    # Map each subject to its list of (teacher_id, group_count)
-    subject_teacher_groups = defaultdict(list)
-    for st in subject_teachers:
-        sid, tid = st[1], st[3]
-        group_count = max(1, st[7])
-        subject_teacher_groups[sid].append((tid, group_count))
-
-    sessions = []
-    for sid, subj in subjects.items():
-        hours_per_week = subj[3]
-        raw_maxpd = subj[4]
-        raw_minpd = subj[6]
-        maxpd = max(0, raw_maxpd)
-        minpd = max(0, raw_minpd)
-        if minpd > maxpd:
-            logger.warning(f"Subject {sid}: raw minpd={raw_minpd} > maxpd={raw_maxpd}, clamping to {maxpd}")
-            minpd = maxpd
-
-        teacher_groups = subject_teacher_groups.get(sid, [])
-        all_students = sorted(list(subj_students.get(sid, set())))
-
-        # Create exactly `hours_per_week` session objects, distributing among teachers round‐robin
-        created = 0
-        teacher_idx = 0
-        while created < hours_per_week:
-            if not teacher_groups:
-                logger.error(f"No teacher assigned for Subject {sid}, cannot build sessions")
-                break
-            tid, _ = teacher_groups[teacher_idx % len(teacher_groups)]
-            session = create_session(
-                sid=sid,
-                teachers_list=[tid],
-                hour=created,
-                students=all_students,
-                teacher_info=teachers[tid],
-                maxpd=maxpd,
-                minpd=minpd,
-                hour_blocker=hour_blocker,
-                subjects_dict=subjects,
-                parallel_group=None
-            )
-            session['block_size'] = minpd if minpd > 1 else 1
-            sessions.append(session)
-            created += 1
-            subject_session_counts[sid] += 1
-            teacher_idx += 1
-
-        if subject_session_counts[sid] != hours_per_week:
-            logger.error(f"Subject {sid}: built {subject_session_counts[sid]} sessions (required {hours_per_week})")
-
-    # Summary of sessions built
-    cnt = Counter(s['subject'] for s in sessions)
-    for sid, subj in subjects.items():
-        required = subj[3]
-        built = cnt[sid]
-        logger.info(f"Subject {sid}: built {built} sessions, required {required} (hours)")
-
-    return sessions
-
-
-def create_session(sid, teachers_list, hour, students, teacher_info, maxpd, minpd, hour_blocker, subjects_dict, parallel_group=None):
-    """
-    Create a single session dict for subject `sid`.
-    Each session requires:
-      - `max_per_day` (maxpd)
-      - `min_per_day` (minpd)
-      - `candidates`: all (day,period) where the assigned teacher(s) are available and not blocked.
-    """
-    session = {
-        'id': f"S{sid}_H{hour}",
-        'subject': sid,
-        'teachers': teachers_list,
-        'group': 1,
-        'students': students,
-        'candidates': [],
-        'max_per_day': maxpd,
-        'min_per_day': minpd,
-        'parallel_with': parallel_group,
-        'is_parallel': (parallel_group is not None),
-        'hour': hour,
-        'block_size': minpd if minpd > 1 else 1
-    }
-
-    # Build candidate slots
-    for di, day in enumerate(DAYS):
-        all_available = all(teacher_info[4 + di] for _ in teachers_list)
-        if not all_available:
-            continue
-        for p in range(PERIODS_PER_DAY):
-            if hour_blocker[day][p] == 1:
-                session['candidates'].append(di * PERIODS_PER_DAY + p)
-
-    if not session['candidates']:
-        logger.error(f"Session {session['id']} (Subject {sid}) has NO CANDIDATES.")
-    return session
-
-# --- Evaluation Function ---
-def evaluate_schedule(schedule, all_sessions, subjects):
-    """
-    Compute a numeric score of `schedule`. Lower is better.
-    Penalize:
-      - Too many or too few sessions per subject per week.
-      - Subject daily minpd/maxpd violations (with contiguity checks).
-      - Student conflicts (same slot).
-      - Teacher conflicts (same slot).
-      - Student daily load <4 or >6 (penalized but not hard).
-    """
-    score = 0
-    scheduled_count = defaultdict(int)
-    student_schedule = defaultdict(lambda: defaultdict(set))
-    student_daily_hours = defaultdict(lambda: defaultdict(int))
-    subject_daily_hours = defaultdict(lambda: defaultdict(int))
-    teacher_daily_slots = defaultdict(lambda: defaultdict(set))
-
-    # Precompute: which subjects still have any block_size > 1?
-    subject_has_block = defaultdict(bool)
-    for sess in all_sessions:
-        if sess['block_size'] > 1:
-            subject_has_block[sess['subject']] = True
-
-    # Tally through scheduled slots
-    for (day, period), slot_sessions in schedule.items():
-        for sess in slot_sessions:
-            sid = sess['subject']
-            scheduled_count[sid] += 1
-            for student in sess['students']:
-                if period in student_schedule[student][day]:
-                    score += 8000  # Hard penalty for overlap
-                student_schedule[student][day].add(period)
-                student_daily_hours[student][day] += 1
-            subject_daily_hours[sid][day] += 1
-            for tid in sess['teachers']:
-                if period in teacher_daily_slots[tid][day]:
-                    score += 10000  # Hard penalty
-                teacher_daily_slots[tid][day].add(period)
-
-        # Check subject max per day
-        for sess in slot_sessions:
-            sid = sess['subject']
-            maxpd = sess['max_per_day']
-            if subject_daily_hours[sid][day] > maxpd:
-                over = subject_daily_hours[sid][day] - maxpd
-                score += 5000 * over
-
-    # Enforce minpd and contiguity
-    for sid, subj in subjects.items():
-        raw_minpd = subj[6]
-        raw_maxpd = subj[4]
-        maxpd = max(0, raw_maxpd)
-
-        if subject_has_block[sid]:
-            minpd = max(0, raw_minpd)
-        else:
-            minpd = 1
-
-        if minpd > maxpd:
-            minpd = maxpd
-
-        required = subj[3]
-        full_blocks = required // minpd if minpd > 0 else 0
-        leftover = required - (full_blocks * minpd)
-
-        if minpd <= 0:
-            continue
-
-        for d in range(4):
-            actual = subject_daily_hours[sid].get(d, 0)
-            if actual > maxpd:
-                score += 10000 * (actual - maxpd)
-            if 0 < actual < minpd and actual != leftover:
-                deficit = minpd - actual
-                score += 10000 * deficit
-            if actual == minpd:
-                periods = [
-                    p for (dd, p), sl in schedule.items()
-                    if dd == d for s in sl if s['subject'] == sid
-                ]
-                periods.sort()
-                if any(periods[i+1] - periods[i] != 1 for i in range(len(periods)-1)):
-                    score += 20000  # Contiguity violation
-
-    # Student daily load penalties
-    for student, daily in student_daily_hours.items():
-        for d, hours in daily.items():
-            if hours < 4:
-                score += 2000 * (4 - hours)
-            if hours > 6:
-                score += 3000 * (hours - 6)
-
-    # Weekly hours per subject
-    for sid, subj in subjects.items():
-        required = subj[3]
-        actual = scheduled_count.get(sid, 0)
-        if actual != required:
-            score += 20000 * abs(actual - required)
-
-    return score
-
-# --- Greedy Initial Construction ---
-def greedy_initial(sessions, subjects):
-    """
-    Build a starting schedule by placing sessions one‐by‐one greedily,
-    respecting teacher availability, student overlaps, and subject maxpd.
-    The “minpd” (contiguity) constraint is intentionally skipped during this phase,
-    so that all sessions can at least be placed. Contiguity will be refined later.
-    """
-    subject_requirements = defaultdict(int)
-    for sess in sessions:
-        subject_requirements[sess['subject']] += 1
-
-    subjects_scheduled = defaultdict(int)
-    subject_daily = defaultdict(lambda: defaultdict(int))
-    teacher_schedule = defaultdict(set)
-    student_schedule = defaultdict(lambda: defaultdict(set))
-
-    schedule = {}  # (day,period) -> [session, ...]
-
-    def session_priority(sess):
-        sid = sess['subject']
-        required = subject_requirements[sid]
-        placed = subjects_scheduled[sid]
-        no_sessions_yet = (placed == 0)
-        remaining_ratio = (required - placed) / required if required > 0 else 0
-        earliest_candidate = min(sess['candidates']) if sess['candidates'] else PERIODS_PER_DAY * len(DAYS)
-        return (no_sessions_yet, remaining_ratio, -earliest_candidate, len(sess['students']))
-
-    def has_student_conflict(sess, key):
-        day, period = key
-        return any(period in student_schedule[stu][day] for stu in sess['students'])
-
-    def find_best_slot(sess):
-        sid = sess['subject']
-        maxpd = sess['max_per_day']
-
-        # Compute how many of this subject already on each day
-        current_daily = dict(subject_daily[sid])
-
-        # Build a list of both occupied and free candidate slots, sorted by preference
-        occupied = { (day * PERIODS_PER_DAY + p)
-                     for (day, p), sl in schedule.items()
-                     for s in sl }
-        empty_slots = [s for s in sess['candidates'] if s not in occupied]
-        all_slots = sorted(list(occupied) + empty_slots, key=lambda sl: (
-            sl % PERIODS_PER_DAY < 5,  # prefer morning (False < True)
-            sum(len(schedule.get((sl // PERIODS_PER_DAY, p), [])) for p in range(PERIODS_PER_DAY)) > 0,
-            -(sl // PERIODS_PER_DAY),
-            -(sl % PERIODS_PER_DAY),
-            len(schedule.get((sl // PERIODS_PER_DAY, sl % PERIODS_PER_DAY), [])) > 0
-        ), reverse=True)
-
-        for sl in all_slots:
-            day = sl // PERIODS_PER_DAY
-            period = sl % PERIODS_PER_DAY
-            key = (day, period)
-
-            # Teacher conflict?
-            if any(sl in teacher_schedule[tid] for tid in sess['teachers']):
-                continue
-            # Student conflict?
-            if has_student_conflict(sess, key):
-                continue
-            # Subject maxpd?
-            new_count = current_daily.get(day, 0) + 1
-            if new_count > maxpd:
-                continue
-
-            # We skip the “minpd” / contiguity check here to allow placement of all sessions.
-            return sl
-
-        return None
-
-    total = len(sessions)
-    while True:
-        pending = [s for s in sessions if subjects_scheduled[s['subject']] < subject_requirements[s['subject']]]
-        if not pending:
-            break
-        pending_sorted = sorted(pending, key=session_priority, reverse=True)
-        progress = False
-        for sess in pending_sorted:
-            if subjects_scheduled[sess['subject']] >= subject_requirements[sess['subject']]:
-                continue
-            slot = find_best_slot(sess)
-            if slot is not None:
-                day, period = slot // PERIODS_PER_DAY, slot % PERIODS_PER_DAY
-                schedule.setdefault((day, period), []).append(sess)
-                for tid in sess['teachers']:
-                    teacher_schedule[tid].add(slot)
-                for stu in sess['students']:
-                    student_schedule[stu][day].add(period)
-                subject_daily[sess['subject']][day] += 1
-                subjects_scheduled[sess['subject']] += 1
-                progress = True
-        if not progress:
-            break
-
-    placed = sum(subjects_scheduled.values())
-    unplaced = [s['id'] for s in sessions if subjects_scheduled[s['subject']] < subject_requirements[s['subject']]]
-    logger.info(f"greedy_initial placed {placed} of {total} sessions; unplaced={unplaced}")
-    return schedule
-
-# --- Fallback: Break 2-hour Blocks into Singles ---
-def fallback_replace_blocks_with_all_singles(original_sessions, current_schedule, subjects, teachers, hour_blocker):
-    """
-    If some subjects still missing hours after greedy_initial, break each 2-hour (or minpd) block session into two 1-hour sessions,
-    then rebuild the schedule by re-running greedy_initial on the new all-singles list.
-    """
-    logger.info("Some subjects still missing hours after first greedy; applying fallback to break blocks into REQUIRED single-hour sessions")
-
-    # Identify which subjects are short
-    scheduled_count = defaultdict(int)
-    for (day, period), slot_sessions in current_schedule.items():
-        for sess in slot_sessions:
-            scheduled_count[sess['subject']] += 1
-    missing_subjects = []
-    for sid, subj in subjects.items():
-        required = subj[3]
-        actual = scheduled_count.get(sid, 0)
-        if actual < required:
-            missing_subjects.append(sid)
-    # Build a new sessions list where any session for a missing subject that has block_size>1 is replaced
-    new_sessions = []
-    for sess in original_sessions:
-        sid = sess['subject']
-        if sid in missing_subjects and sess['block_size'] > 1:
-            # Replace this 2-hour block session with two 1-hour sessions
-            raw_minpd = sess['block_size']
-            for h in range(raw_minpd):
-                new_sess = copy.deepcopy(sess)
-                new_sess['id'] = f"{sess['id']}_H{h}"
-                new_sess['min_per_day'] = 1
-                new_sess['max_per_day'] = 1
-                new_sess['block_size'] = 1
-                new_sessions.append(new_sess)
-        else:
-            new_sess = copy.deepcopy(sess)
-            new_sess['block_size'] = 1
-            new_sessions.append(new_sess)
-
-    # Re‐run greedy_initial on the new list
-    return new_sessions
-
-# --- Solver with Simulated Annealing ---
-def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200, stop_flag=None):
-    """
-    Use simulated annealing to improve the schedule generated by greedy_initial.
-    Stop if no improvement for STALL_THRESHOLD iterations, logging every LOG_INTERVAL.
-    """
-    start_time = time.time()
-    best_schedule = None
-    best_score = float('inf')
-    students_dict = {s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()}
-                     for s in get_student()}
-
-    # Keep a copy of original sessions
-    original_sessions = copy.deepcopy(sessions)
-
-    # Initial schedule
-    current = greedy_initial(sessions, subjects)
-    current_score = evaluate_schedule(current, sessions, subjects)
-
-    # If some subjects missing, apply fallback
-    scheduled_count = defaultdict(int)
-    for (d, p), sl in current.items():
-        for sess in sl:
-            scheduled_count[sess['subject']] += 1
-    any_missing = False
-    for sid, subj in subjects.items():
-        required = subj[3]
-        actual = scheduled_count.get(sid, 0)
-        if actual < required:
-            any_missing = True
-            break
-    if any_missing:
-        # Replace 2-hour blocks with singles for missing subjects
-        sessions = fallback_replace_blocks_with_all_singles(original_sessions, current, subjects, teachers, hour_blocker)
-        # Re-run greedy_initial
-        current = greedy_initial(sessions, subjects)
-        current_score = evaluate_schedule(current, sessions, subjects)
-        logger.info(f"Initial score (after fallback if needed): {current_score}")
-    else:
-        best_schedule = copy.deepcopy(current)
-        best_score = current_score
-        logger.info(f"Initial score: {best_score}")
-
-    # If no missing, record best
-    if not any_missing:
-        best_schedule = copy.deepcopy(current)
-        best_score = current_score
-    else:
-        best_schedule = copy.deepcopy(current)
-        best_score = current_score
-
-    temp = 1.0
-    cooling_rate = 0.999
-    min_temp = 0.001
-
-    iteration = 0
-    stall_count = 0
-
-    while temp > min_temp and (time.time() - start_time < time_limit):
-        if stop_flag and stop_flag():
-            break
-        iteration += 1
-        neighbor = generate_neighbor(current, subjects)
-        neighbor_score = evaluate_schedule(neighbor, sessions, subjects)
-        delta = neighbor_score - current_score
-
-        if delta < 0 or random.random() < math.exp(-delta / temp):
-            current = neighbor
-            current_score = neighbor_score
-            if current_score < best_score:
-                best_score = current_score
-                best_schedule = copy.deepcopy(current)
-                logger.info(f"Iter {iteration}: New best score = {best_score}")
-                stall_count = 0
+        self.window = tk.Tk()
+      
+        window_width = 1280
+        window_height = 720
+
+        # get the screen dimension
+        screen_width = self.window.winfo_screenwidth()
+        screen_height = self.window.winfo_screenheight()
+
+        # find the center point
+        center_x = int(screen_width/2 - window_width / 2)
+        center_y = int(screen_height/2 - window_height / 2)
+
+        # set the position of the window to the center of the screen
+        self.window.geometry(f'{window_width}x{window_height}+{center_x}+{center_y}')
+        
+        self.window.title("School timetable algorithm")
+
+        self.menubar = tk.Menu(self.window)
+
+        self.filemenu = tk.Menu(self.menubar, tearoff=0)
+        self.filemenu.add_command(label="Close", command=exit)        
+        self.filemenu.add_separator()
+
+        self.menubar.add_cascade(menu=self.filemenu, label="File")
+
+        self.window.config(menu=self.menubar)
+
+        self.frame = tk.Frame(self.window)
+        
+        self.frame.columnconfigure(0, weight=1)
+        self.frame.columnconfigure(1, weight=1)
+        self.frame.columnconfigure(2, weight=1)
+        self.frame.columnconfigure(3, weight=1)
+        self.frame.columnconfigure(4, weight=1)
+        self.frame.columnconfigure(5, weight=1)
+        self.frame.columnconfigure(6, weight=1)
+
+        self.btn1 = tk.Button(self.frame, text="Subject", font=("Arial", 18), command=self.subject)
+        self.btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
+
+        self.btn2 = tk.Button(self.frame, text="Teacher", font=("Arial", 18), command=self.teacher)
+        self.btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
+
+        self.btn3 = tk.Button(self.frame, text="Student", font=("Arial", 18), command=self.student)
+        self.btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
+
+        self.btn4 = tk.Button(self.frame, text="Subject/Teacher", font=("Arial", 18), command=self.subject_teacher)
+        self.btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
+
+        self.btn5 = tk.Button(self.frame, text="Subject/Student", font=("Arial", 18), command=self.subject_student)
+        self.btn5.grid(row=0, column=4, sticky=tk.W+tk.E, **options)
+
+        self.btn6 = tk.Button(self.frame, text="Hour blocker", font=("Arial", 18), command=self.hour_blocker)
+        self.btn6.grid(row=0, column=5, sticky=tk.W+tk.E, **options)
+
+        self.btn7 = tk.Button(self.frame, text="Algorithm", font=("Arial", 18), command=self.algorithm)
+        self.btn7.grid(row=0, column=6, sticky=tk.W+tk.E, **options)
+
+        self.frame.pack(fill="x")
+
+        self.window.mainloop()
+
+    #SUBJECT
+    def subject(self):
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Subject")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
+
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=1)
+        frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(5, weight=1)
+        frame.columnconfigure(6, weight=1)
+
+        selected_subject_id = None
+
+        def change_list():
+            subject_list = get_subject()
+            subject_listbox.delete(0, END)
+
+            for i in range(len(subject_list)):
+                subject_listbox.insert("end", f"{subject_list[i]}")
+
+        def subject_add():
+            name = ent1.get()
+            group_number = ent2.get()
+            number_of_hours_per_week = ent3.get()
+            max_hours_per_day = ent4.get()
+            max_student_count_per_group = ent5.get()
+            min_hours_per_day = ent6.get()
+            parallel_subject_groups = ent7.get()
+            try:
+                int(group_number)
+                int(number_of_hours_per_week)
+                int(max_hours_per_day)
+                int(max_student_count_per_group)
+                int(min_hours_per_day)
+                int(parallel_subject_groups)
+            except:
+                showerror("Error", "Group number, number of hours per week, max hours per day, max student count per group need to be a number, min hours per day and parallel_subject_groups")
+                return
+            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group and min_hours_per_day and parallel_subject_groups:
+                add_subject(name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups)
             else:
-                stall_count += 1
-        else:
-            stall_count += 1
+                showerror("Error", "All fields must be filled out.")
+                return
+            change_list()
 
-        if iteration % LOG_INTERVAL == 0:
-            logger.info(f"Iter {iteration}, best_score={best_score}, temp={temp:.4f}, stall_count={stall_count}")
+        def subject_remove():
+            selected = list(subject_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select something to remove.")
+                return
+            
+            subject_list = get_subject() 
+            selected_id = [] 
+            for i in selected:
+                selected_id.append(subject_list[i][0])
+            remove_subject(selected_id)
+            
+            change_list()
 
-        if stall_count >= STALL_THRESHOLD:
-            logger.error("Solver stopped due to no improvement for 10,000 iterations.")
-            validate_final_schedule(best_schedule, sessions, subjects, teachers)
-            break
+        def subject_edit():
+            nonlocal selected_subject_id
+            selected = list(subject_listbox.curselection())
+            
+            if not selected:
+                showerror("Error", "Select something to edit.")
+                return
+            elif len(selected) > 1:
+                showerror("Error", "Select only one to edit.")
+                return
+            selected1=selected[0]
+            subject_list = get_subject() 
+            ent1.delete(0, END)
+            ent2.delete(0, END)
+            ent3.delete(0, END)
+            ent4.delete(0, END)
+            ent5.delete(0, END)
+            ent6.delete(0, END)
+            ent7.delete(0, END)
+            ent1.insert(0, subject_list[selected1][1])
+            ent2.insert(0, subject_list[selected1][2])
+            ent3.insert(0, subject_list[selected1][3])
+            ent4.insert(0, subject_list[selected1][4])
+            ent5.insert(0, subject_list[selected1][5])
+            ent6.insert(0, subject_list[selected1][6])
+            ent7.insert(0, subject_list[selected1][7])
+            selected_subject_id = subject_list[selected1][0]
 
-        temp *= cooling_rate
-
-    return best_schedule, students_dict
-
-# --- Neighbor Generation ---
-def generate_neighbor(schedule, subjects):
-    """Randomly pick one of the move heuristics to perturb the schedule."""
-    moves = [
-        move_session_to_empty_slot,
-        swap_two_sessions,
-        move_parallel_group,
-        reorganize_day
-    ]
-    move = random.choice(moves)
-    new_schedule = copy.deepcopy(schedule)
-    return move(new_schedule, subjects)
-
-# --- Utility for Moves ---
-def _compute_subject_daily(schedule, sid):
-    """Count how many sessions of subject `sid` per day in `schedule`."""
-    counts = defaultdict(int)
-    for (day, period), sl in schedule.items():
-        for sess in sl:
-            if sess['subject'] == sid:
-                counts[day] += 1
-    return counts
-
-
-def has_student_conflict(sess, key, schedule):
-    """Check if `sess` has any student conflict at slot `key`."""
-    if key not in schedule:
-        return False
-    sset = set(sess['students'])
-    for other in schedule[key]:
-        if sset & set(other['students']):
-            return True
-    return False
-
-# --- Move Heuristics ---
-def move_session_to_empty_slot(schedule, subjects):
-    """Move a random session from a busy slot to a “lighter” slot."""
-    occupied_slots = list(schedule.keys())
-    if not occupied_slots:
-        return schedule
-
-    # Rebuild teacher_schedule from the current schedule
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
-        for sess in sl:
-            for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
-
-    # Build teacher loads per day
-    teacher_loads = defaultdict(lambda: defaultdict(int))
-    for (day, period), sessions in schedule.items():
-        for sess in sessions:
-            for tid in sess['teachers']:
-                teacher_loads[tid][day] += 1
-
-    # Pick source slot with highest teacher‐load metric
-    slot_scores = []
-    for slot in occupied_slots:
-        day = slot[0]
-        max_load = 0
-        for sess in schedule[slot]:
-            for tid in sess['teachers']:
-                max_load = max(max_load, teacher_loads[tid][day])
-        slot_scores.append((max_load, slot))
-    source_slot = max(slot_scores, key=lambda x: x[0])[1]
-
-    if source_slot not in schedule or not schedule[source_slot]:
-        return schedule
-
-    session = random.choice(schedule[source_slot])
-    sid = session['subject']
-    maxpd = session['max_per_day']
-    raw_minpd = session['block_size']
-    subj_minpd = max(0, raw_minpd)
-
-    orig_daily = _compute_subject_daily(schedule, sid)
-
-    # Candidate target slots: any slot with fewer sessions than source
-    target_slots = []
-    for day in range(4):
-        for p in range(PERIODS_PER_DAY):
-            sl = (day, p)
-            if sl == source_slot:
-                continue
-            count_here = len(schedule.get(sl, []))
-            count_source = len(schedule[source_slot])
-            if count_here < count_source:
-                # Compute teacher‐load metric
-                day_load = sum(
-                    teacher_loads[tid][day]
-                    for sess2 in schedule.get(sl, []) for tid in sess2['teachers']
-                )
-                target_slots.append((day_load, sl))
-
-    if not target_slots:
-        return schedule
-
-    def ts_score(x):
-        load, (day, period) = x
-        return (load, day, period, len(schedule.get((day, period), [])))
-
-    target_slots.sort(key=ts_score)
-    for _, target_slot in target_slots:
-        new_day = target_slot[0]
-        old_day = source_slot[0]
-        new_daily = orig_daily.copy()
-        new_daily[old_day] -= 1
-        new_daily[new_day] += 1
-
-        # Check subject daily maxpd
-        if new_daily[new_day] > maxpd:
-            continue
-
-        # Teacher conflict?
-        target_index = target_slot[0] * PERIODS_PER_DAY + target_slot[1]
-        if any(target_index in teacher_schedule[tid] for tid in session['teachers'] if target_slot != source_slot):
-            continue
-        # Student conflict?
-        if has_student_conflict(session, target_slot, schedule):
-            continue
-
-        # Commit move
-        schedule[source_slot].remove(session)
-        if not schedule[source_slot]:
-            del schedule[source_slot]
-        schedule.setdefault(target_slot, []).append(session)
-        return schedule
-
-    return schedule
-
-
-def swap_two_sessions(schedule, subjects):
-    """Swap two randomly picked sessions between different slots."""
-    occupied_slots = list(schedule.keys())
-    if len(occupied_slots) < 2:
-        return schedule
-
-    # Rebuild teacher_schedule from the current schedule
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
-        for sess in sl:
-            for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
-
-    slot1, slot2 = random.sample(occupied_slots, 2)
-    if not schedule[slot1] or not schedule[slot2]:
-        return schedule
-
-    sess1 = random.choice(schedule[slot1])
-    sess2 = random.choice(schedule[slot2])
-    sid1, sid2 = sess1['subject'], sess2['subject']
-    maxpd1 = sess1['max_per_day']
-    maxpd2 = sess2['max_per_day']
-    raw_minpd1 = sess1['block_size']
-    raw_minpd2 = sess2['block_size']
-    subj_minpd1 = max(0, raw_minpd1)
-    subj_minpd2 = max(0, raw_minpd2)
-
-    old_day1, old_day2 = slot1[0], slot2[0]
-    daily1 = _compute_subject_daily(schedule, sid1)
-    daily2 = _compute_subject_daily(schedule, sid2)
-
-    new_daily1 = daily1.copy()
-    new_daily2 = daily2.copy()
-    new_daily1[old_day1] -= 1
-    new_daily1[old_day2] += 1
-    new_daily2[old_day2] -= 1
-    new_daily2[old_day1] += 1
-
-    # Check daily maxpd for both subjects
-    if new_daily1[old_day2] > maxpd1 or new_daily2[old_day1] > maxpd2:
-        return schedule
-
-    # Teacher conflict?
-    slot1_index = slot1[0] * PERIODS_PER_DAY + slot1[1]
-    slot2_index = slot2[0] * PERIODS_PER_DAY + slot2[1]
-    if any(slot2_index in teacher_schedule[tid] for tid in sess1['teachers'] if slot2 != slot1) or \
-       any(slot1_index in teacher_schedule[tid] for tid in sess2['teachers'] if slot1 != slot2):
-        return schedule
-
-    # Student conflicts?
-    if has_student_conflict(sess1, slot2, schedule) or has_student_conflict(sess2, slot1, schedule):
-        return schedule
-
-    # Commit swap
-    schedule[slot1].remove(sess1)
-    schedule[slot1].append(sess2)
-    schedule[slot2].remove(sess2)
-    schedule[slot2].append(sess1)
-    return schedule
-
-
-def move_parallel_group(schedule, subjects):
-    """
-    Move all sessions of a parallel group together to a random slot,
-    respecting subject daily constraints and teacher/student conflicts.
-    """
-    # Rebuild teacher_schedule from the current schedule
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
-        for sess in sl:
-            for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
-
-    parallel_groups = defaultdict(list)
-    for slot, sl in schedule.items():
-        for sess in sl:
-            if sess.get('is_parallel'):
-                parallel_groups[sess['parallel_with']].append((slot, sess))
-
-    if not parallel_groups:
-        return schedule
-
-    group_id = random.choice(list(parallel_groups.keys()))
-    group_sessions = parallel_groups[group_id]
-
-    target_day = random.randint(0, 3)
-    target_period = random.randint(0, PERIODS_PER_DAY - 1)
-    target_slot = (target_day, target_period)
-
-    # Precompute daily counts
-    daily_counts = {}
-    for _, sess in group_sessions:
-        sid = sess['subject']
-        if sid not in daily_counts:
-            daily_counts[sid] = _compute_subject_daily(schedule, sid)
-
-    # Check feasibility
-    for old_slot, sess in group_sessions:
-        sid = sess['subject']
-        minpd = sess['min_per_day']
-        maxpd = sess['max_per_day']
-        required = subjects[sid][3]
-        subj_minpd = max(0, subjects[sid][6])
-
-        old_day = old_slot[0]
-        new_daily = daily_counts[sid].copy()
-        new_daily[old_day] -= 1
-        new_daily[target_day] += 1
-
-        # Only enforce maxpd here
-        if new_daily[target_day] > maxpd:
-            return schedule
-
-        # Teacher conflict?
-        target_index = target_day * PERIODS_PER_DAY + target_period
-        if any(target_index in teacher_schedule[tid] for tid in sess['teachers']):
-            return schedule
-        # Student conflict?
-        if has_student_conflict(sess, target_slot, schedule):
-            return schedule
-
-    # Commit moves
-    for old_slot, sess in group_sessions:
-        schedule[old_slot].remove(sess)
-        if not schedule[old_slot]:
-            del schedule[old_slot]
-        schedule.setdefault(target_slot, []).append(sess)
-
-    return schedule
-
-
-def reorganize_day(schedule, subjects):
-    """
-    For a random day, collect all sessions and reassign them to the earliest possible periods,
-    attempting to maximize valid parallelization (no student overlap).
-    If any sessions remain un‐placed after using all 10 periods, they go back to their original slot.
-    """
-    day = random.randint(0, 3)
-
-    # Step 1: Gather every session on that day, remembering original (period, session)
-    original_entries = []
-    for period in range(PERIODS_PER_DAY):
-        slot = (day, period)
-        if slot in schedule:
-            for sess in schedule[slot]:
-                original_entries.append((period, sess))
-            del schedule[slot]
-
-    if not original_entries:
-        return schedule
-
-    # Prepare a list of just sessions
-    day_sessions = [sess for (_, sess) in original_entries]
-
-    # Step 2: Sort day_sessions by “parallel potential” (fewest students first)
-    def parallel_potential(sess):
-        return (len(sess['students']), sess['subject'])
-
-    day_sessions.sort(key=parallel_potential)
-
-    placed_slots = {}  # (day, period) -> [session, ...]
-    period = 0
-
-    # Step 3: Fill up to 10 periods
-    while day_sessions and period < PERIODS_PER_DAY:
-        current_group = []
-        remaining = []
-        for sess in day_sessions:
-            can_add = True
-            for added in current_group:
-                if set(sess['students']) & set(added['students']):
-                    can_add = False
-                    break
-            if can_add and len(current_group) < 8:
-                current_group.append(sess)
+        def subject_confirm_edit():
+            nonlocal selected_subject_id
+            name = ent1.get()
+            group_number = ent2.get()
+            number_of_hours_per_week = ent3.get()
+            max_hours_per_day = ent4.get()
+            max_student_count_per_group = ent5.get()
+            min_hours_per_day = ent6.get()
+            parallel_subject_groups = ent7.get()
+            try:
+                int(group_number)
+                int(number_of_hours_per_week)
+                int(max_hours_per_day)
+                int(max_student_count_per_group)
+                int(min_hours_per_day)
+                int(parallel_subject_groups)
+            except:
+                showerror("Error", "Group number, number of hours per week, max hours per day, max student count per group need to be a number, min hours per day and paralle subject groups")
+                return
+            if name and group_number and number_of_hours_per_week and max_hours_per_day and max_student_count_per_group and min_hours_per_day and parallel_subject_groups:
+                if selected_subject_id != None:
+                    update_subject(selected_subject_id, name, group_number, number_of_hours_per_week, max_hours_per_day, max_student_count_per_group, min_hours_per_day, parallel_subject_groups)
+                    selected_subject_id = None
+                else:
+                    showerror("Error", "Select something to edit.")
+                    return
             else:
-                remaining.append(sess)
+                    showerror("Error", "All fields must be filled out.")
+                    return
+            change_list()
 
-        if current_group:
-            placed_slots[(day, period)] = current_group
-            period += 1
-        day_sessions = remaining
+        btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_add)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
-    # Step 4: Put whatever was placed back into schedule
-    for slot, sess_list in placed_slots.items():
-        schedule[slot] = sess_list
+        btn2 = tk.Button(frame, text="Remove", font=("Arial", 18), command=subject_remove)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
 
-    # Step 5: Any leftover (day_sessions) must return to their original slot
-    if day_sessions:
-        original_map = { sess['id']: pr for (pr, sess) in original_entries }
-        for sess in day_sessions:
-            orig_period = original_map[sess['id']]
-            orig_slot = (day, orig_period)
-            schedule.setdefault(orig_slot, []).append(sess)
+        btn3 = tk.Button(frame, text="Edit", font=("Arial", 18), command=subject_edit)
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
 
-    return schedule
+        btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=subject_confirm_edit)
+        btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
 
-# --- Output & Validation ---
-def format_schedule_output(schedule, subjects, teachers, students_dict):
-    subject_dict = {s[0]: {'id': s[0], 'name': s[1], 'group_count': s[2]} for s in subjects.values()}
-    teacher_dict = {t[0]: {'id': t[0], 'name': f"{t[1]} {t[2] or ''} {t[3]}".strip()} for t in teachers.values()}
+        label1 = tk.Label(frame, text="Name", font=("Arial", 18))
+        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
 
-    formatted = {
-        'metadata': {
-            'num_days': 4,
-            'periods_per_day': 10,
-            'total_sessions': sum(len(slots) for slots in schedule.values())
-        },
-        'days': {}
-    }
+        label2 = tk.Label(frame, text="Group number", font=("Arial", 18))
+        label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
 
-    for (day, period), slot_sessions in schedule.items():
-        formatted['days'].setdefault(str(day), {})
-        formatted['days'][str(day)][str(period)] = []
-        for sess in slot_sessions:
-            sid = sess['subject']
-            subj_info = subject_dict[sid]
-            if sess.get('is_parallel'):
-                required_groups = subj_info['group_count']
-                student_count = len(sess['students'])
-                per_group = math.ceil(student_count / required_groups)
-                groups = [sess['students'][i:i+per_group] for i in range(0, student_count, per_group)]
-                while len(groups) < required_groups:
-                    groups.append([])
-                for gi, grp in enumerate(groups):
-                    formatted_session = {
-                        'id': f"{sess['id']}_G{gi+1}",
-                        'subject_id': sid,
-                        'subject_name': subj_info['name'],
-                        'teachers': [{'id': sess['teachers'][0], 'name': teacher_dict[sess['teachers'][0]]['name']}],
-                        'students': [{'id': s, 'name': students_dict[s]['name']} for s in grp],
-                        'group': gi+1,
-                        'is_parallel': True,
-                        'parallel_group_id': sess['id']
-                    }
-                    formatted['days'][str(day)][str(period)].append(formatted_session)
+        label3 = tk.Label(frame, text="Number of hours per week", font=("Arial", 18))
+        label3.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="Max hours per day", font=("Arial", 18))
+        label4.grid(row=1, column=3, sticky=tk.W+tk.E, **options)
+        
+        label5 = tk.Label(frame, text="Max student count per group", font=("Arial", 18))
+        label5.grid(row=1, column=4, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="Min hours per day", font=("Arial", 18))
+        label6.grid(row=1, column=5, sticky=tk.W+tk.E, **options)
+
+        label7 = tk.Label(frame, text="Parallel subject groups", font=("Arial", 18))
+        label7.grid(row=0, column=5, columnspan=2, sticky=tk.E, **options)
+
+        label7 = tk.Label(frame, text="0 = No 1 = Yes", font=("Arial", 18))
+        label7.grid(row=1, column=6, sticky=tk.W+tk.E, **options)
+
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        ent2 = tk.Entry(frame,  font=("Arial", 18))
+        ent2.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        ent3 = tk.Entry(frame,  font=("Arial", 18))
+        ent3.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+
+        ent4 = tk.Entry(frame,  font=("Arial", 18))
+        ent4.grid(row=2, column=3, sticky=tk.W+tk.E, **options)
+
+        ent5 = tk.Entry(frame,  font=("Arial", 18))
+        ent5.grid(row=2, column=4, sticky=tk.W+tk.E, **options)
+
+        ent6 = tk.Entry(frame,  font=("Arial", 18))
+        ent6.grid(row=2, column=5, sticky=tk.W+tk.E, **options) 
+        
+        ent7 = tk.Entry(frame,  font=("Arial", 18))
+        ent7.grid(row=2, column=6, sticky=tk.W+tk.E, **options)
+        ent7.insert(0, 0)
+        
+        frame.pack(fill="x")
+
+        subject_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 18))
+        subject_listbox.pack(**options)   
+
+        change_list()
+        wind.mainloop()
+
+
+    #TEACHER
+    def teacher(self):
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Teacher")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
+
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=6)
+        frame.columnconfigure(4, weight=6)
+        frame.columnconfigure(5, weight=6)
+        frame.columnconfigure(6, weight=6)
+        frame.columnconfigure(7, weight=6)
+        frame.columnconfigure(8, weight=6)
+        frame.columnconfigure(9, weight=6)
+        frame.columnconfigure(10, weight=6)
+
+
+        selected_teacher_id = None
+
+        def change_list():
+            teacher_list = get_teacher()
+            teacher_listbox.delete(0, END)
+
+            for i in range(len(teacher_list)):
+                teacher_listbox.insert("end", f"{teacher_list[i]}")
+
+        def teacher_add():
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
+            monday = checkboxent1.get()
+            tuesday = checkboxent2.get()
+            wednesday = checkboxent3.get()
+            thursday = checkboxent4.get()
+            monday1 = ent4.get()
+            tuesday1 = ent6.get()
+            wednesday1 = ent8.get()
+            thursday1 = ent10.get()
+            monday2 = ent5.get()
+            tuesday2 = ent7.get()
+            wednesday2 = ent9.get()
+            thursday2 = ent11.get()
+            if name and last_name and monday1 and tuesday1 and wednesday1 and thursday1 and monday2 and tuesday2 and wednesday2 and thursday2:
+                add_teacher(name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2)
             else:
-                formatted_session = {
-                    'id': sess['id'],
-                    'subject_id': sid,
-                    'subject_name': subj_info['name'],
-                    'teachers': [{'id': tid, 'name': teacher_dict[tid]['name']} for tid in sess['teachers']],
-                    'students': [{'id': s, 'name': students_dict[s]['name']} for s in sess['students']],
-                    'group': sess['group'],
-                    'is_parallel': False,
-                    'parallel_group_id': None
-                }
-                formatted['days'][str(day)][str(period)].append(formatted_session)
+                showerror("Error", "All fields must be filled out except middle name.")
+                return
+            change_list()
 
-    return formatted
+        def teacher_remove():
+            selected = list(teacher_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select something to remove.")
+                return
+            
+            teacher_list = get_teacher() 
+            selected_id = [] 
+            for i in selected:
+                selected_id.append(teacher_list[i][0])
+            remove_teacher(selected_id)
+            
+            change_list()
+
+        def teacher_edit():
+            nonlocal selected_teacher_id
+            selected = list(teacher_listbox.curselection())
+            
+            if not selected:
+                showerror("Error", "Select something to edit.")
+                return
+            elif len(selected) > 1:
+                showerror("Error", "Select only one to edit.")
+                return
+            selected1=selected[0]
+            teacher_list = get_teacher() 
+            ent1.delete(0, END)
+            ent2.delete(0, END)
+            ent3.delete(0, END)
+            ent4.delete(0, END)
+            ent5.delete(0, END)
+            ent6.delete(0, END)
+            ent7.delete(0, END)
+            ent8.delete(0, END)
+            ent9.delete(0, END)
+            ent10.delete(0, END)
+            ent11.delete(0, END)
+            ent1.insert(0, teacher_list[selected1][1])
+            ent2.insert(0, teacher_list[selected1][2])
+            ent3.insert(0, teacher_list[selected1][3])
+            ent4.insert(0, teacher_list[selected1][8])
+            ent5.insert(0, teacher_list[selected1][10])
+            ent6.insert(0, teacher_list[selected1][12])
+            ent7.insert(0, teacher_list[selected1][14])
+            ent8.insert(0, teacher_list[selected1][9])
+            ent9.insert(0, teacher_list[selected1][11])
+            ent10.insert(0, teacher_list[selected1][13])
+            ent11.insert(0, teacher_list[selected1][15])
+            checkboxent1.set(teacher_list[selected1][4])
+            checkboxent2.set(teacher_list[selected1][5])
+            checkboxent3.set(teacher_list[selected1][6])
+            checkboxent4.set(teacher_list[selected1][7])
+            selected_teacher_id = teacher_list[selected1][0]
+
+        def teacher_confirm_edit():
+            nonlocal selected_teacher_id
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
+            monday = checkboxent1.get()
+            tuesday = checkboxent2.get()
+            wednesday = checkboxent3.get()
+            thursday = checkboxent4.get()
+            monday1 = ent4.get()
+            tuesday1 = ent6.get()
+            wednesday1 = ent8.get()
+            thursday1 = ent10.get()
+            monday2 = ent5.get()
+            tuesday2 = ent7.get()
+            wednesday2 = ent9.get()
+            thursday2 = ent11.get()
+            if name and last_name and monday1 and tuesday1 and wednesday1 and thursday1 and monday2 and tuesday2 and wednesday2 and thursday2:
+                if selected_teacher_id != None:
+                    update_teacher(selected_teacher_id, name, middle_name, last_name, monday, tuesday, wednesday, thursday, monday1, tuesday1, wednesday1, thursday1, monday2, tuesday2, wednesday2, thursday2)
+                    selected_teacher_id = None
+                else:
+                    showerror("Error", "Select something to edit.")
+                    return
+            else:
+                    showerror("Error", "All fields must be filled out except middle name.")
+                    return
+            change_list()
+
+        btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=teacher_add)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
+        
+        btn2 = tk.Button(frame, text="Remove", font=("Arial", 18), command=teacher_remove)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
+
+        btn3 = tk.Button(frame, text="Edit", font=("Arial", 18), command=teacher_edit)
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
+
+        btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=teacher_confirm_edit)
+        btn4.grid(row=0, column=3, columnspan=8, sticky=tk.W+tk.E, **options)
+
+        label1 = tk.Label(frame, text="Name", font=("Arial", 18))
+        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
+
+        label2 = tk.Label(frame, text="Middle name", font=("Arial", 18))
+        label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
+
+        label3 = tk.Label(frame, text="Last name", font=("Arial", 18))
+        label3.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="Monday", font=("Arial", 18))
+        label4.grid(row=1, column=3, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Tuesday", font=("Arial", 18))
+        label5.grid(row=1, column=5, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="Wednesday", font=("Arial", 18))
+        label6.grid(row=1, column=7, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        label7 = tk.Label(frame, text="Thursday", font=("Arial", 18))
+        label7.grid(row=1, column=9, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        label8 = tk.Label(frame, text="≤", font=("Arial", 18))
+        label8.grid(row=3, column=3, sticky=tk.W+tk.E, **options)
+
+        label9 = tk.Label(frame, text="≥", font=("Arial", 18))
+        label9.grid(row=3, column=4, sticky=tk.W+tk.E, **options)
+        
+        label10 = tk.Label(frame, text="≤", font=("Arial", 18))
+        label10.grid(row=3, column=5, sticky=tk.W+tk.E, **options)
+
+        label11 = tk.Label(frame, text="≥", font=("Arial", 18))
+        label11.grid(row=3, column=6, sticky=tk.W+tk.E, **options)
+
+        label12 = tk.Label(frame, text="≤", font=("Arial", 18))
+        label12.grid(row=3, column=7, sticky=tk.W+tk.E, **options)
+
+        label13 = tk.Label(frame, text="≥", font=("Arial", 18))
+        label13.grid(row=3, column=8, sticky=tk.W+tk.E, **options)
+
+        label14 = tk.Label(frame, text="≤", font=("Arial", 18))
+        label14.grid(row=3, column=9, sticky=tk.W+tk.E, **options)
+
+        label15 = tk.Label(frame, text="≥", font=("Arial", 18))
+        label15.grid(row=3, column=10, sticky=tk.W+tk.E, **options)
+
+        label16 = tk.Label(frame, text="≤ means not working until given hour\n≥ means not working past given hour", font=("Arial", 18))
+        label16.grid(row=3, column=0, columnspan=3, rowspan=2, sticky=tk.W+tk.E, **options)
+
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        ent2 = tk.Entry(frame,  font=("Arial", 18))
+        ent2.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        ent3 = tk.Entry(frame,  font=("Arial", 18))
+        ent3.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+
+        ent4 = tk.Entry(frame, font=("Arial", 18))
+        ent4.grid(row=4, column=3, sticky=tk.W+tk.E, **options)
+        ent4.insert(0, 0)
+
+        ent5 = tk.Entry(frame, font=("Arial", 18))
+        ent5.grid(row=4, column=4, sticky=tk.W+tk.E, **options)
+        ent5.insert(0, 0)
+
+        ent6 = tk.Entry(frame, font=("Arial", 18))
+        ent6.grid(row=4, column=5, sticky=tk.W+tk.E, **options)
+        ent6.insert(0, 0)
+
+        ent7 = tk.Entry(frame, font=("Arial", 18))
+        ent7.grid(row=4, column=6, sticky=tk.W+tk.E, **options)
+        ent7.insert(0, 0)
+
+        ent8 = tk.Entry(frame, font=("Arial", 18))
+        ent8.grid(row=4, column=7, sticky=tk.W+tk.E, **options)
+        ent8.insert(0, 0)
+
+        ent9 = tk.Entry(frame, font=("Arial", 18))
+        ent9.grid(row=4, column=8, sticky=tk.W+tk.E, **options)
+        ent9.insert(0, 0)
+
+        ent10 = tk.Entry(frame, font=("Arial", 18))
+        ent10.grid(row=4, column=9, sticky=tk.W+tk.E, **options)
+        ent10.insert(0, 0)
+
+        ent11 = tk.Entry(frame, font=("Arial", 18))
+        ent11.grid(row=4, column=10, sticky=tk.W+tk.E, **options)
+        ent11.insert(0, 0)
+
+        checkboxent1 = tk.IntVar(value=1)
+        box1 = tk.Checkbutton(frame,  font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
+        box1.grid(row=2, column=3, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        checkboxent2 = tk.IntVar(value=1)
+        box2 = tk.Checkbutton(frame,  font=("Arial", 18), variable=checkboxent2, offvalue=0, onvalue=1)
+        box2.grid(row=2, column=5, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        checkboxent3 = tk.IntVar(value=1)
+        box3 = tk.Checkbutton(frame,  font=("Arial", 18), variable=checkboxent3, offvalue=0, onvalue=1)
+        box3.grid(row=2, column=7, columnspan=2, sticky=tk.W+tk.E, **options)
+
+        checkboxent4 = tk.IntVar(value=1)
+        box4 = tk.Checkbutton(frame,  font=("Arial", 18), variable=checkboxent4, offvalue=0, onvalue=1)
+        box4.grid(row=2, column=9, columnspan=2, sticky=tk.W+tk.E, **options)   
+
+        frame.pack(fill="x")
+
+        teacher_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 18))
+        teacher_listbox.pack(**options)   
+
+        change_list()
+        wind.mainloop()
 
 
-def validate_final_schedule(schedule, sessions, subjects, teachers):
-    """
-    Detailed logging of any issues in `schedule`:
-      - Student conflicts (same slot).
-      - Teacher conflicts (same slot).
-      - Subject weekly totals vs required.
-      - Subject daily minpd/maxpd and contiguity.
-      - Teacher daily load.
-      - Student daily load.
-    """
-    logger.info("\n=== Schedule Validation Results ===")
-    stats = {
-        'student_conflicts': 0,
-        'teacher_conflicts': 0,
-        'subject_hours': defaultdict(int),
-        'required_hours': {},
-        'subject_daily': defaultdict(lambda: defaultdict(int)),
-        'teacher_daily_load': defaultdict(lambda: defaultdict(int)),
-        'student_daily_load': defaultdict(lambda: defaultdict(int)),
-        'student_conflict_details': [],
-        'teacher_conflict_details': []
-    }
+    #STUDENT
+    def student(self):
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Student")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
 
-    for sid in subjects:
-        stats['required_hours'][sid] = subjects[sid][3]
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
 
-    # Identify which subjects still have any block_size > 1
-    subject_has_block = defaultdict(bool)
-    for sess in sessions:
-        if sess.get('block_size', 1) > 1:
-            subject_has_block[sess['subject']] = True
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=1)
+        frame.columnconfigure(4, weight=1)
 
-    # Track slot usage
-    for (day, period), slot_sessions in schedule.items():
-        teachers_this_slot = defaultdict(list)
-        students_this_slot = defaultdict(list)
-        for sess in slot_sessions:
-            sid = sess['subject']
-            stats['subject_hours'][sid] += 1
-            stats['subject_daily'][sid][day] += 1
-            for tid in sess['teachers']:
-                teachers_this_slot[tid].append(sess['id'])
-                stats['teacher_daily_load'][tid][day] += 1
-            for stu in sess['students']:
-                students_this_slot[stu].append(sess['id'])
-                stats['student_daily_load'][stu][day] += 1
+        selected_student_id = None
 
-        for tid, sess_ids in teachers_this_slot.items():
-            if len(sess_ids) > 1:
-                stats['teacher_conflicts'] += 1
-                stats['teacher_conflict_details'].append((tid, day, period, sess_ids))
-                logger.error(f"Teacher conflict: Teacher {tid} has sessions {sess_ids} on {DAYS[day]} period {period}")
+        def change_list():
+            student_list = get_student()
+            student_listbox.delete(0, END)
 
-        for stu, sess_ids in students_this_slot.items():
-            if len(sess_ids) > 1:
-                stats['student_conflicts'] += 1
-                stats['student_conflict_details'].append((stu, day, period, sess_ids))
-                logger.error(f"Student conflict: Student {stu} has sessions {sess_ids} on {DAYS[day]} period {period}")
+            for i in range(len(student_list)):
+                student_listbox.insert("end", f"{student_list[i]}")
 
-    # Subject weekly totals and daily breakdown
-    logger.info("\n--- Subject‐by‐Subject Hours Check ---")
-    missing = []
-    for sid, required in stats['required_hours'].items():
-        actual = stats['subject_hours'].get(sid, 0)
-        if actual != required:
-            logger.error(f"Subject {sid} has {actual} hours (required: {required})")
-            missing.append(sid)
-        else:
-            logger.info(f"Subject {sid}: {actual}/{required} hours – OK")
+        def student_add():
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
+            if name and last_name:
+                add_student(name, middle_name, last_name)
+            else:
+                showerror("Error", "All fields must be filled out except middle name.")
+                return
+            change_list()
 
-        raw_minpd = subjects[sid][6]
-        raw_maxpd = subjects[sid][4]
-        maxpd = max(0, raw_maxpd)
-        if subject_has_block[sid]:
-            minpd = max(0, raw_minpd)
-        else:
-            minpd = 1
-        if minpd > maxpd:
-            minpd = maxpd
-        required = subjects[sid][3]
-        full_blocks = required // minpd if minpd > 0 else 0
-        leftover = required - (full_blocks * minpd)
+        def student_remove():
+            selected = list(student_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select something to remove.")
+                return
+            
+            student_list = get_student() 
+            selected_id = [] 
+            for i in selected:
+                selected_id.append(student_list[i][0])
+            remove_student(selected_id)
+            
+            change_list()
 
-        for d in range(4):
-            count_d = stats['subject_daily'][sid].get(d, 0)
-            logger.info(f"    {DAYS[d].capitalize()}: {count_d} session{'s' if count_d != 1 else ''}")
-            if count_d > maxpd:
-                logger.error(f"    → Subject {sid} on {DAYS[d]} has {count_d} (> maxpd={maxpd})")
-            if minpd > 0:
-                if count_d > 0 and count_d < minpd and count_d != leftover:
-                    logger.error(f"    → Subject {sid} on {DAYS[d]} has {count_d}, expected block of {minpd} or leftover {leftover}")
-                if count_d == minpd:
-                    periods = [
-                        p for (dd, p), sl in schedule.items()
-                        if dd == d for s in sl if s['subject'] == sid
-                    ]
-                    periods.sort()
-                    if any(periods[i+1] - periods[i] != 1 for i in range(len(periods)-1)):
-                        logger.error(f"    → Subject {sid} on {DAYS[d]} block not contiguous")
+        def student_edit():
+            nonlocal selected_student_id
+            selected = list(student_listbox.curselection())
+            
+            if not selected:
+                showerror("Error", "Select something to edit.")
+                return
+            elif len(selected) > 1:
+                showerror("Error", "Select only one to edit.")
+                return
+            selected1=selected[0]
+            student_list = get_student() 
+            ent1.delete(0, END)
+            ent2.delete(0, END)
+            ent3.delete(0, END)
+            ent1.insert(0, student_list[selected1][1])
+            ent2.insert(0, student_list[selected1][2])
+            ent3.insert(0, student_list[selected1][3])
+            selected_student_id = student_list[selected1][0]
 
-    if missing:
-        logger.error(f"\nThe following subjects did not reach required hours: {missing}")
-    else:
-        logger.info("\nAll subjects reached required weekly totals")
+        def student_confirm_edit():
+            nonlocal selected_student_id
+            name = ent1.get()
+            middle_name = ent2.get()
+            last_name = ent3.get()
+            if name and last_name:
+                if selected_student_id != None:
+                    update_student(selected_student_id, name, middle_name, last_name)
+                    selected_student_id = None
+                else:
+                    showerror("Error", "Select something to edit.")
+                    return
+            else:
+                    showerror("Error", "All fields must be filled out except middle name.")
+                    return
+            change_list()
 
-    # Student conflicts summary
-    logger.info(f"\n--- Total Student Conflicts: {stats['student_conflicts']} ---")
-    for stu, day, period, sess_ids in stats['student_conflict_details']:
-        logger.error(f" Student {stu} conflict at {DAYS[day]} period {period}: {sess_ids}")
+        btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=student_add)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
-    # Teacher conflicts summary
-    logger.info(f"\n--- Total Teacher Conflicts: {stats['teacher_conflicts']} ---")
-    for tid, day, period, sess_ids in stats['teacher_conflict_details']:
-        logger.error(f" Teacher {tid} conflict at {DAYS[day]} period {period}: {sess_ids}")
+        btn2 = tk.Button(frame, text="Remove", font=("Arial", 18), command=student_remove)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
 
-    # Teacher daily loads
-    logger.info("\n--- Teacher Daily Loads ---")
-    for tid, daily in stats['teacher_daily_load'].items():
-        name = f"{teachers[tid][1]} {teachers[tid][3]}"
-        logger.info(f"Teacher {tid} ({name}):")
-        for d in range(4):
-            load = daily.get(d, 0)
-            logger.info(f"   {DAYS[d].capitalize()}: {load} session{'s' if load != 1 else ''}")
+        btn3 = tk.Button(frame, text="Edit", font=("Arial", 18), command=student_edit)
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
 
-    # Student maximum load per day
-    logger.info("\n--- Maximum Student Load per Day ---")
-    max_daily = defaultdict(int)
-    for stu, daily in stats['student_daily_load'].items():
-        for d, load in daily.items():
-            max_daily[d] = max(max_daily[d], load)
-    for d in range(4):
-        logger.info(f"  {DAYS[d].capitalize()}: {max_daily[d]} session{'s' if max_daily[d] != 1 else ''}")
+        btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=student_confirm_edit)
+        btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
 
-    logger.info("\n=== End Detailed Validation ===\n")
+        label1 = tk.Label(frame, text="Name", font=("Arial", 18))
+        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
 
-    return stats
+        label2 = tk.Label(frame, text="Middle name", font=("Arial", 18))
+        label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
 
-# --- Main Execution ---
-if __name__ == '__main__':
-    teachers, subjects, students_raw, st_map, subj_students, hb, student_groups = load_data()
-    sessions = build_sessions(teachers, subjects, st_map, subj_students, hb)
+        label3 = tk.Label(frame, text="Last name", font=("Arial", 18))
+        label3.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
 
-    # Solve
-    schedule, students_dict = solve_timetable(sessions, subjects, teachers, hb, time_limit=1200)
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
 
-    if schedule:
-        formatted = format_schedule_output(schedule, subjects, teachers, students_dict)
-        stats = validate_final_schedule(schedule, sessions, subjects, teachers)
+        ent2 = tk.Entry(frame,  font=("Arial", 18))
+        ent2.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
 
-        logger.info("\nSchedule Summary:")
-        logger.info(f"Total sessions scheduled: {formatted['metadata']['total_sessions']}")
-        logger.info(f"Days: {formatted['metadata']['num_days']}")
-        logger.info(f"Periods per day: {formatted['metadata']['periods_per_day']}")
+        ent3 = tk.Entry(frame,  font=("Arial", 18))
+        ent3.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+        
+        frame.pack(fill="x")
 
-        with open('schedule_output.json', 'w') as f:
-            json.dump(formatted, f, indent=2)
+        student_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 18))
+        student_listbox.pack(**options)   
 
-        logger.info("\nDetailed schedule saved to 'schedule_output.json'")
-    else:
-        logger.error("No solution found")
-        exit(1)
+        change_list()
+        wind.mainloop()     
+
+
+    #SUBJECT/TEACHER
+    def subject_teacher(self):
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Subject/Teacher")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
+        
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+        selected_subject_teacher_id = None
+        selected_subject_id = None
+        selected_teacher_id = None
+
+        def change_list():
+            subject_teacher_list = get_subject_teacher()
+            subject_list = get_subject()
+            teacher_list = get_teacher()
+
+            subject_teacher_listbox.delete(0, END)
+            subject_listbox.delete(0, END)
+            teacher_listbox.delete(0, END)
+
+            for item in subject_teacher_list:
+                subject_teacher_listbox.insert("end", f"{item}")
+            for item in subject_list:
+                subject_listbox.insert("end", f"{item}")
+            for item in teacher_list:
+                teacher_listbox.insert("end", f"{item}")
+
+        def subject_teacher_add():
+            nonlocal selected_subject_id, selected_teacher_id
+            group_number = ent1.get()
+            subject_teacher_list = get_subject_teacher()
+            for i in range(len(subject_teacher_list)):
+                if  selected_subject_id == subject_teacher_list[i][1] and selected_teacher_id == subject_teacher_list[i][3] and subject_teacher_list[i][0] != selected_subject_teacher_id:
+                    showerror("Error", "This teacher/subject already exists if you need multiple connections choose a bigger group number by editing existing one.")
+                    return
+            try:
+                int(group_number)
+            except:
+                showerror("Error", "Group number needs to be an integer.")
+                return
+            if group_number and selected_subject_id and selected_teacher_id:
+                add_subject_teacher(selected_subject_id, selected_teacher_id, group_number)
+                change_list()
+            else:
+                showerror("Error", "You need to select subject, teacher and write a group number.")
+                return
+            
+        def subject_teacher_remove():
+            selected = list(subject_teacher_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select something to remove from teacher/subject connections.")
+                return
+            subject_teacher_list = get_subject_teacher()
+            selected_id = [] 
+            for i in selected:
+                selected_id.append(subject_teacher_list[i][0])
+            remove_subject_teacher(selected_id)
+            
+            change_list()
+
+        def subject_teacher_edit():
+            nonlocal selected_subject_teacher_id, selected_subject_id, selected_teacher_id
+            subject_list = get_subject()
+            teacher_list = get_teacher()
+            selected = list(subject_teacher_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select subject/teacher connection to edit.")
+                return
+            elif len(selected) > 1:
+                showerror("Error", "Select only one to edit.")
+                return
+            subject_teacher_list = get_subject_teacher() 
+            selected_subject_teacher_id = subject_teacher_list[selected[0]][0]
+            selected_subject_id = subject_teacher_list[selected[0]][1]
+            selected_teacher_id = subject_teacher_list[selected[0]][3]
+            for i in range(len(subject_list)):
+                if subject_list[i][0] == subject_teacher_list[selected[0]][1]:
+                    label3.config(text=f"{subject_list[i]}")
+            for i in range(len(teacher_list)):
+                if teacher_list[i][0] == subject_teacher_list[selected[0]][3]:
+                    label4.config(text=f"{teacher_list[i]}")
+            for i in range(len(subject_teacher_list)):
+                if selected_subject_teacher_id == subject_teacher_list[i][0]:
+                    ent1.delete(0, END)
+                    ent1.insert(0, subject_teacher_list[i][7])
+                   
+
+
+        def subject_teacher_confirm_edit():
+            nonlocal selected_subject_teacher_id, selected_subject_id, selected_teacher_id
+            group_number = ent1.get()
+            subject_teacher_list = get_subject_teacher()
+            for i in range(len(subject_teacher_list)):
+                if  selected_subject_id == subject_teacher_list[i][1] and selected_teacher_id == subject_teacher_list[i][3] and subject_teacher_list[i][0] != selected_subject_teacher_id:
+                    showerror("Error", "This teacher/subject already exists either delete previuos one or edit it.")
+                    return
+            try:
+                int(group_number)
+            except:
+                showerror("Error", "Group number needs to be an integer.")
+                return
+            if selected_subject_teacher_id != None:
+                update_subject_teacher(selected_subject_teacher_id, selected_subject_id, selected_teacher_id, group_number)
+                selected_subject_teacher_id = None
+            else:
+                showerror("Error", "Select something to edit.")
+                return
+            change_list()
+
+        def subject_on_selection(useless):
+            nonlocal selected_subject_id
+            subject_list = get_subject()
+            selected = list(subject_listbox.curselection()) 
+            try:
+                selected_subject_id = subject_list[selected[0]][0]
+                label3.config(text=f"{subject_list[selected[0]]}")
+            except:
+                return
+            
+        def teacher_on_selection(useless):
+            nonlocal selected_teacher_id
+            teacher_list = get_teacher()
+            selected = list(teacher_listbox.curselection())
+            try:
+                selected_teacher_id = teacher_list[selected[0]][0]
+                label4.config(text=f"{teacher_list[selected[0]]}")
+            except:
+                return
+
+        btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_teacher_add)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
+
+        btn2 = tk.Button(frame, text="Remove", font=("Arial", 18), command=subject_teacher_remove)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
+
+        btn3 = tk.Button(frame, text="Edit", font=("Arial", 18), command=subject_teacher_edit)
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
+
+        btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=subject_teacher_confirm_edit)
+        btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
+
+        label1 = tk.Label(frame, text="Subject", font=("Arial", 18))
+        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
+
+        label2 = tk.Label(frame, text="Teacher", font=("Arial", 18))
+        label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
+
+        label3 = tk.Label(frame, text="No subject selected", font=("Arial", 18))
+        label3.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="No teacher selected", font=("Arial", 18))
+        label4.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Group number", font=("Arial", 18))
+        label5.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+
+        subject_listbox = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 18))
+        subject_listbox.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
+        subject_listbox.bind("<<ListboxSelect>>", subject_on_selection)
+
+        teacher_listbox = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 18))
+        teacher_listbox.grid(row=3, column=1, sticky=tk.W+tk.E, **options)
+        teacher_listbox.bind("<<ListboxSelect>>", teacher_on_selection)
+
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=3, column=2, sticky=tk.W+tk.E+tk.N, **options)
+
+        frame.pack(fill="x")
+
+        subject_teacher_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 18))
+        subject_teacher_listbox.pack(**options)   
+
+        change_list()
+        wind.mainloop()
+
+
+    #SUBJECT/STUDENT
+    def subject_student(self):  
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Subject/Student")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
+        
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=1)
+
+        selected_subject_student_id = None
+        selected_subject_ids = None
+        selected_student_id = None
+        subject_student_list = None
+
+        def change_list():
+            nonlocal subject_student_list
+            subject_student_list = get_subject_student()
+            subject_student_list = [list(item) for item in subject_student_list]
+            subject_list = get_subject()
+            subject_list = [list(item) for item in subject_list]
+            student_list = get_student()
+            
+            subject_ids = []
+            subject_names = []
+            for i in range(len(subject_student_list)):
+                subject_ids.append(json.loads(subject_student_list[i][1]))
+                subject_student_list[i][1] = subject_ids[i]
+            for i in range(len(subject_ids)):
+                for b in range(len(subject_ids[i])):
+                    for c in range(len(subject_list)):
+                        if subject_ids[i][b] == subject_list[c][0]:
+                            subject_names.append(subject_list[c][1])
+                subject_student_list[i][2] = subject_names
+                subject_names = []
+            subject_student_listbox.delete(0, END)
+            subject_listbox.delete(0, END)
+            student_listbox.delete(0, END)
+            for item in subject_student_list:
+                subject_student_listbox.insert("end", f"{item}")
+            for item in subject_list:
+                subject_listbox.insert("end", f"{item}")
+            for item in student_list:
+                student_listbox.insert("end", f"{item}")
+
+        def subject_student_add():
+            nonlocal selected_subject_ids, selected_student_id, subject_student_list
+            for i in range(len(subject_student_list)):
+                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
+                    showerror("Error", "This student already has connections delete previous or edit it.")
+                    return
+            if selected_subject_ids and selected_student_id:
+                json_selected_subject_ids = json.dumps(selected_subject_ids)
+                add_subject_student(json_selected_subject_ids, selected_student_id)
+                change_list()
+            else:
+                showerror("Error", "You need to select subject and student.")
+                return
+            
+        def subject_student_remove():
+            nonlocal subject_student_list
+            selected = list(subject_student_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select something to remove from student/subject connections.")
+                return
+            selected_id = [] 
+            for i in selected:
+                selected_id.append(subject_student_list[i][0])
+            remove_subject_student(selected_id)            
+            change_list()
+
+        
+        def subject_student_edit():
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
+            student_list = get_student()
+            subject_list = get_subject()
+            selected = list(subject_student_listbox.curselection())
+            if not selected:
+                showerror("Error", "Select subject/student connection to edit.")
+                return
+            elif len(selected) > 1:
+                showerror("Error", "Select only one to edit.")
+                return
+            selected_subject_student_id = subject_student_list[selected[0]][0]
+            selected_subject_ids = subject_student_list[selected[0]][1]
+            selected_student_id = subject_student_list[selected[0]][3]
+            label3.config(text=f"{subject_student_list[selected[0]][2]}")
+            for i in range(len(student_list)):
+                if student_list[i][0] == subject_student_list[selected[0]][3]:
+                    label4.config(text=f"{student_list[i]}")
+            
+            for i in selected_subject_ids:
+                for b in range(len(subject_list)):
+                    if i == subject_list[b][0]:
+                        subject_listbox.selection_set(b)
+
+
+        def subject_student_confirm_edit():
+            nonlocal selected_subject_student_id, selected_subject_ids, selected_student_id, subject_student_list
+            for i in range(len(subject_student_list)):
+                if  selected_student_id == subject_student_list[i][3] and subject_student_list[i][0] != selected_subject_student_id:
+                    showerror("Error", "This student already has connections delete previous or edit it.")
+                    return
+            if selected_subject_student_id != None:
+                update_subject_student(selected_subject_student_id, selected_subject_ids, selected_student_id)
+                selected_subject_student_id = None
+            else:
+                showerror("Error", "Select something to edit.")
+                return
+            change_list()
+
+
+        def subject_on_selection(useless):
+            nonlocal selected_subject_ids
+            selected = list(subject_listbox.curselection())
+            subject_list = get_subject()
+            selected_ids = []
+            selected_label = []
+            if selected:
+                for i in range(len(selected)):
+                    selected_ids.append(subject_list[selected[i]][0])
+                    selected_label.append(subject_list[selected[i]][1])
+                label3.config(text=f"{selected_label}")
+                selected_subject_ids = selected_ids
+                        
+        def student_on_selection(useless):
+            nonlocal selected_student_id
+            student_list = get_student()
+            selected = list(student_listbox.curselection())
+            try:
+                selected_student_id = student_list[selected[0]][0]
+                label4.config(text=f"{student_list[selected[0]]}")
+            except:
+                return
+            
+        
+        def add_from_ecxel():
+            file_path = ent1.get()
+            try:
+                file = pd.read_excel(file_path)
+            except:
+                showerror("Error", "Input a valid excel file path")
+                return
+            
+            csv_file = "excel.csv"
+            file.to_csv(csv_file, index=False)
+
+            file = pd.read_csv(csv_file)
+            column_names = file.columns.tolist()
+            row_list = file.values.tolist()
+
+            column_student_names = file[column_names[0]]
+            column_student_names_remade = []
+            for i in range(len(column_student_names)):
+                column_student_names_remade.append(" ".join(column_student_names[i].split()))
+            student_tuple = list(get_student())
+            student_list = []
+            for i in range(len(student_tuple)):
+                student_list.append(list(student_tuple[i]))
+            student_list_remade = []
+            for i in range(len(student_list)):
+                if student_list[i][2] == "":
+                    student_temp1 = student_list[i][1].replace(" ", "")
+                    student_temp3 = student_list[i][3].replace(" ", "")
+                    temp = []
+                    temp.append(student_list[i][0])
+                    temp.append(f"{student_temp1} {student_temp3}")
+                    student_list_remade.append(temp)
+                else:
+                    student_temp1 = student_list[i][1].replace(" ", "")
+                    student_temp2 = student_list[i][2].replace(" ", "")  
+                    student_temp3 = student_list[i][3].replace(" ", "")
+                    temp = []
+                    temp.append(student_list[i][0])
+                    temp.append(f"{student_temp1} {student_temp2} {student_temp3}")        
+                    student_list_remade.append(temp)
+
+            missing_student_names = []
+            for name in column_student_names_remade:
+                if not any(name == sublist[1] for sublist in student_list_remade):
+                    missing_student_names.append(name)
+
+            subject_list = list(get_subject())
+            subject_list_remade = []
+            for i in range(len(subject_list)):
+                temp = []
+                temp.append(subject_list[i][0])
+                temp.append(subject_list[i][1])
+                subject_list_remade.append(temp)
+            column_subject_names = column_names
+            del column_subject_names[0]
+
+            missing_subject_names = []
+            for name in column_subject_names:
+                if not any(name == sublist[1] for sublist in subject_list_remade):
+                    missing_subject_names.append(name)
+          
+            if len(missing_student_names) != 0 or len(missing_subject_names) != 0:
+                result = messagebox.askyesno("Choose", f"Do you want to add students: {missing_student_names} and subjects: {missing_subject_names} hours will added with some default values please change them and add a teacher for subject.")
+                if result:
+                    if len(missing_student_names) > 0:
+                        for i in range(len(missing_student_names)):
+                            temp = missing_student_names[i].split()
+                            student_name = ""
+                            middle_name = ""
+                            last_name = ""
+                            if len(temp) == 2:
+                                student_name = temp[0]
+                                last_name = temp[1]
+                            elif len(temp) == 3:
+                                student_name = temp[0]
+                                middle_name = temp[1]
+                                last_name = temp[2]
+                            else:
+                                showerror("Error", f"Can't add {missing_student_names[i]} it has to 2 or 3 words long!")
+                                return
+                            add_student(student_name, middle_name, last_name)
+                    
+                    if len(missing_subject_names) > 0:
+                        for i in range(len(missing_subject_names)):
+                            missing_subject_names[i]
+                            add_subject(missing_subject_names[i], 1, 6, 2, 30, 2, 0)
+                    
+                else:
+                    showerror("Error", "Adding from excel was unsuccessful!")
+                    return
+            
+
+            column_student_names_remade1 = []
+            for i in range(len(column_student_names)):
+                column_student_names_remade1.append(" ".join(column_student_names[i].split()))
+            student_tuple1 = list(get_student())
+            student_list1 = []
+            for i in range(len(student_tuple1)):
+                student_list1.append(list(student_tuple1[i]))
+            student_list_remade1 = []
+            for i in range(len(student_list1)):
+                if student_list1[i][2] == "":
+                    student_temp11 = student_list1[i][1].replace(" ", "")
+                    student_temp31 = student_list1[i][3].replace(" ", "")
+                    temp1 = []
+                    temp1.append(student_list1[i][0])
+                    temp1.append(f"{student_temp11} {student_temp31}")
+                    student_list_remade1.append(temp1)
+                else:
+                    student_temp11 = student_list1[i][1].replace(" ", "")
+                    student_temp21 = student_list1[i][2].replace(" ", "")  
+                    student_temp31 = student_list1[i][3].replace(" ", "")
+                    temp1 = []
+                    temp1.append(student_list1[i][0])
+                    temp1.append(f"{student_temp11} {student_temp21} {student_temp31}")        
+                    student_list_remade1.append(temp1)
+
+            column_student_id1 = []
+            for i in range(len(column_student_names_remade1)):
+                for b in range(len(student_list_remade1)):
+                    if column_student_names[i] == student_list_remade1[b][1]:
+                        column_student_id1.append(student_list_remade1[b][0])
+                        break
+
+            subject_list1 = list(get_subject())
+            subject_list_remade1 = []
+            for i in range(len(subject_list1)):
+                temp1 = []
+                temp1.append(subject_list1[i][0])
+                temp1.append(subject_list1[i][1])
+                subject_list_remade1.append(temp1)
+
+            column_subject_id1 = []
+            for i in range(len(column_subject_names)):
+                for b in range(len(subject_list_remade1)):
+                    if column_subject_names[i] == subject_list_remade1[b][1]:
+                        column_subject_id1.append(subject_list_remade1[b][0])
+            
+            subject_student_list1 = list(get_subject_student())
+            subject_student_list_remade1 = []
+            for i in range(len(subject_student_list1)):
+                temp1 = []
+                temp1.append(subject_student_list1[i][0])
+                temp1.append(subject_student_list1[i][3])
+                subject_student_list_remade1.append(temp1)
+
+            for i in range(len(column_student_id1)):
+                real_subject_ids1 = []
+                for b in range(1, len(row_list[i])):
+                    if str(row_list[i][b]) != "nan":
+                        real_subject_ids1.append(column_subject_id1[b-1])
+                x=0 
+                for c in range(len(subject_student_list_remade1)):
+                    if subject_student_list_remade1[c][1] == column_student_id1[i]:
+                        update_subject_student(subject_student_list_remade1[c][0], real_subject_ids1, column_student_id1[i])
+                        x=1
+                        break
+                if x == 0:
+                    add_subject_student(real_subject_ids1, column_student_id1[i])
+            change_list()
+            
+
+
+
+            
+            
+
+
+
+
+        btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
+
+        btn2 = tk.Button(frame, text="Remove", font=("Arial", 18), command=subject_student_remove)
+        btn2.grid(row=0, column=1, sticky=tk.W+tk.E, **options)
+
+        btn3 = tk.Button(frame, text="Edit", font=("Arial", 18), command=subject_student_edit)
+        btn3.grid(row=0, column=2, sticky=tk.W+tk.E, **options)
+
+        btn4 = tk.Button(frame, text="Confirm edit", font=("Arial", 18), command=subject_student_confirm_edit)
+        btn4.grid(row=0, column=3, sticky=tk.W+tk.E, **options)
+
+        btn5 = tk.Button(frame, text="Add from excel", font=("Arial", 18), command=add_from_ecxel)
+        btn5.grid(row=1, column=3, rowspan=2, sticky=tk.W+tk.E, **options)
+
+        ent1 = tk.Entry(frame,  font=("Arial", 18))
+        ent1.grid(row=2, column=2, sticky=tk.W+tk.E, **options)
+
+        label1 = tk.Label(frame, text="Subject", font=("Arial", 18))
+        label1.grid(row=1, column=0, sticky=tk.W+tk.E, **options)
+
+        label2 = tk.Label(frame, text="Student", font=("Arial", 18))
+        label2.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
+
+        label3 = tk.Label(frame, text="No subject selected", font=("Arial", 10))
+        label3.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="No student selected", font=("Arial", 18))
+        label4.grid(row=2, column=1, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Excel file path", font=("Arial", 18))
+        label5.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="Takes first excel column as student\nall other as seperate subjects.\nMake sure there are no repeating subjects or students in excel or current data.\nStudent is not learning that subject only if\nthe corresponding subject name excel cell is empty.", font=("Arial", 18))
+        label6.grid(row=3, column=2, columnspan=2, sticky=tk.W+tk.E+tk.N, **options)
+
+        subject_listbox = tk.Listbox(frame, selectmode=tk.EXTENDED, font=("Arial", 18))
+        subject_listbox.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
+        subject_listbox.bind("<<ListboxSelect>>", subject_on_selection)
+
+        student_listbox = tk.Listbox(frame, selectmode=tk.SINGLE, font=("Arial", 18))
+        student_listbox.grid(row=3, column=1, sticky=tk.W+tk.E, **options)
+        student_listbox.bind("<<ListboxSelect>>", student_on_selection)
+        
+        frame.pack(fill="x")
+
+        subject_student_listbox = tk.Listbox(wind, selectmode=tk.EXTENDED, height=self.window.winfo_height(), width=self.window.winfo_width(), font=("Arial", 10))
+        subject_student_listbox.pack(**options)   
+
+        change_list()
+        wind.mainloop()   
+
+    #HOUR BLOCKER
+    def hour_blocker(self):  
+        wind = tk.Toplevel(self.window)  # creates a new window
+        wind.title("Hour blocker")  # window title
+        # wind.resizable(False, False)  # prevents adjusting Width, Height
+        wind.geometry("1280x800")  # sets window size
+        wind.grab_set()  # prevents interacting with previous window
+        
+        frame = tk.Frame(wind)
+        frame.grid(row=0, column=0)
+
+        frame.columnconfigure(0, weight=1)
+        frame.columnconfigure(1, weight=1)
+        frame.columnconfigure(2, weight=1)
+        frame.columnconfigure(3, weight=1)
+        frame.columnconfigure(4, weight=1)
+        frame.columnconfigure(5, weight=1)
+        frame.columnconfigure(6, weight=1)
+        frame.columnconfigure(7, weight=1)
+        frame.columnconfigure(8, weight=1)
+        frame.columnconfigure(9, weight=1)
+        frame.columnconfigure(10, weight=1)
+
+        def change_list():
+            hour_blocker = get_hour_blocker()
+            checkboxent1.set(hour_blocker[0][0])
+            checkboxent2.set(hour_blocker[0][1])
+            checkboxent3.set(hour_blocker[0][2])
+            checkboxent4.set(hour_blocker[0][3])
+            checkboxent5.set(hour_blocker[0][4])
+            checkboxent6.set(hour_blocker[0][5])
+            checkboxent7.set(hour_blocker[0][6])
+            checkboxent8.set(hour_blocker[0][7])
+            checkboxent9.set(hour_blocker[0][8])
+            checkboxent10.set(hour_blocker[0][9])
+            checkboxent11.set(hour_blocker[0][10])
+            checkboxent12.set(hour_blocker[0][11])
+            checkboxent13.set(hour_blocker[0][12])
+            checkboxent14.set(hour_blocker[0][13])
+            checkboxent15.set(hour_blocker[0][14])
+            checkboxent16.set(hour_blocker[0][15])
+            checkboxent17.set(hour_blocker[0][16])
+            checkboxent18.set(hour_blocker[0][17])
+            checkboxent19.set(hour_blocker[0][18])
+            checkboxent20.set(hour_blocker[0][19])
+            checkboxent21.set(hour_blocker[0][20])
+            checkboxent22.set(hour_blocker[0][21])
+            checkboxent23.set(hour_blocker[0][22])
+            checkboxent24.set(hour_blocker[0][23])
+            checkboxent25.set(hour_blocker[0][24])
+            checkboxent26.set(hour_blocker[0][25])
+            checkboxent27.set(hour_blocker[0][26])
+            checkboxent28.set(hour_blocker[0][27])
+            checkboxent29.set(hour_blocker[0][28])
+            checkboxent30.set(hour_blocker[0][29])
+            checkboxent31.set(hour_blocker[0][30])
+            checkboxent32.set(hour_blocker[0][31])
+            checkboxent33.set(hour_blocker[0][32])
+            checkboxent34.set(hour_blocker[0][33])
+            checkboxent35.set(hour_blocker[0][34])
+            checkboxent36.set(hour_blocker[0][35])
+            checkboxent37.set(hour_blocker[0][36])
+            checkboxent38.set(hour_blocker[0][37])
+            checkboxent39.set(hour_blocker[0][38])
+            checkboxent40.set(hour_blocker[0][39])
+
+        def hour_blocker_save1():
+            monday1 = checkboxent1.get()
+            monday2 = checkboxent2.get()
+            monday3 = checkboxent3.get()
+            monday4 = checkboxent4.get()
+            monday5 = checkboxent5.get()
+            monday6 = checkboxent6.get()
+            monday7 = checkboxent7.get()
+            monday8 = checkboxent8.get()
+            monday9 = checkboxent9.get()
+            monday10 = checkboxent10.get()
+            tuesday1 = checkboxent11.get()
+            tuesday2 = checkboxent12.get()
+            tuesday3 = checkboxent13.get()
+            tuesday4 = checkboxent14.get()
+            tuesday5 = checkboxent15.get()
+            tuesday6 = checkboxent16.get()
+            tuesday7 = checkboxent17.get()
+            tuesday8 = checkboxent18.get()
+            tuesday9 = checkboxent19.get()
+            tuesday10 = checkboxent20.get()
+            wednesday1 = checkboxent21.get()
+            wednesday2 = checkboxent22.get()
+            wednesday3 = checkboxent23.get()
+            wednesday4 = checkboxent24.get()
+            wednesday5 = checkboxent25.get()
+            wednesday6 = checkboxent26.get()
+            wednesday7 = checkboxent27.get()
+            wednesday8 = checkboxent28.get()
+            wednesday9 = checkboxent29.get()
+            wednesday10 = checkboxent30.get()
+            thursday1 = checkboxent31.get()
+            thursday2 = checkboxent32.get()
+            thursday3 = checkboxent33.get()
+            thursday4 = checkboxent34.get()
+            thursday5 = checkboxent35.get()
+            thursday6 = checkboxent36.get()
+            thursday7 = checkboxent37.get()
+            thursday8 = checkboxent38.get()
+            thursday9 = checkboxent39.get()
+            thursday10 = checkboxent40.get()
+            hour_blocker_save(monday1, monday2, monday3, monday4, monday5, monday6, monday7, monday8, monday9, monday10, tuesday1, tuesday2, tuesday3, tuesday4, tuesday5, tuesday6, tuesday7, tuesday8, tuesday9, tuesday10, wednesday1, wednesday2, wednesday3, wednesday4, wednesday5, wednesday6, wednesday7, wednesday8, wednesday9, wednesday10, thursday1, thursday2, thursday3, thursday4, thursday5, thursday6, thursday7, thursday8, thursday9, thursday10)
+
+
+        btn1 = tk.Button(frame, text="Save", font=("Arial", 18), command=hour_blocker_save1)
+        btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
+
+        label1 = tk.Label(frame, text="Without ✓ means that hour won't be included by alghorithm", font=("Arial", 18))
+        label1.grid(row=0, column=1, columnspan=10, sticky=tk.W+tk.E, **options)
+
+        label2 = tk.Label(frame, text="Monday", font=("Arial", 18))
+        label2.grid(row=2, column=0, sticky=tk.W+tk.E, **options)
+
+        label3 = tk.Label(frame, text="Tuesday", font=("Arial", 18))
+        label3.grid(row=3, column=0, sticky=tk.W+tk.E, **options)
+
+        label4 = tk.Label(frame, text="Wednesday", font=("Arial", 18))
+        label4.grid(row=4, column=0, sticky=tk.W+tk.E, **options)
+
+        label5 = tk.Label(frame, text="Thursday", font=("Arial", 18))
+        label5.grid(row=5, column=0, sticky=tk.W+tk.E, **options)
+
+        label6 = tk.Label(frame, text="1", font=("Arial", 18))
+        label6.grid(row=1, column=1, sticky=tk.W+tk.E, **options)
+
+        label7 = tk.Label(frame, text="2", font=("Arial", 18))
+        label7.grid(row=1, column=2, sticky=tk.W+tk.E, **options)
+
+        label8 = tk.Label(frame, text="3", font=("Arial", 18))
+        label8.grid(row=1, column=3, sticky=tk.W+tk.E, **options)
+
+        label9 = tk.Label(frame, text="4", font=("Arial", 18))
+        label9.grid(row=1, column=4, sticky=tk.W+tk.E, **options)
+
+        label10 = tk.Label(frame, text="5", font=("Arial", 18))
+        label10.grid(row=1, column=5, sticky=tk.W+tk.E, **options)
+
+        label11 = tk.Label(frame, text="6", font=("Arial", 18))
+        label11.grid(row=1, column=6, sticky=tk.W+tk.E, **options)
+
+        label12 = tk.Label(frame, text="7", font=("Arial", 18))
+        label12.grid(row=1, column=7, sticky=tk.W+tk.E)
+
+        label13 = tk.Label(frame, text="8", font=("Arial", 18))
+        label13.grid(row=1, column=8, sticky=tk.W+tk.E)
+
+        label14 = tk.Label(frame, text="9", font=("Arial", 18))
+        label14.grid(row=1, column=9, sticky=tk.W+tk.E)
+
+        label15 = tk.Label(frame, text="10", font=("Arial", 18))
+        label15.grid(row=1, column=10, sticky=tk.W+tk.E)
+
+        checkboxent1 = tk.IntVar(value=1)
+        box1 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
+        box1.grid(row=2, column=1, sticky=tk.W+tk.E)
+
+        checkboxent2 = tk.IntVar(value=1)
+        box2 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent2, offvalue=0, onvalue=1)
+        box2.grid(row=2, column=2, sticky=tk.W+tk.E)
+
+        checkboxent3 = tk.IntVar(value=1)
+        box3 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent3, offvalue=0, onvalue=1)
+        box3.grid(row=2, column=3, sticky=tk.W+tk.E)
+
+        checkboxent4 = tk.IntVar(value=1)
+        box4 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent4, offvalue=0, onvalue=1)
+        box4.grid(row=2, column=4, sticky=tk.W+tk.E)
+
+        checkboxent5 = tk.IntVar(value=1)
+        box5 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent5, offvalue=0, onvalue=1)
+        box5.grid(row=2, column=5, sticky=tk.W+tk.E)
+
+        checkboxent6 = tk.IntVar(value=1)
+        box6 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent6, offvalue=0, onvalue=1)
+        box6.grid(row=2, column=6, sticky=tk.W+tk.E)
+
+        checkboxent7 = tk.IntVar(value=1)
+        box7 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent7, offvalue=0, onvalue=1)
+        box7.grid(row=2, column=7, sticky=tk.W+tk.E)
+
+        checkboxent8 = tk.IntVar(value=1)
+        box8 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent8, offvalue=0, onvalue=1)
+        box8.grid(row=2, column=8, sticky=tk.W+tk.E)
+
+        checkboxent9 = tk.IntVar(value=1)
+        box9 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent9, offvalue=0, onvalue=1)
+        box9.grid(row=2, column=9, sticky=tk.W+tk.E)
+
+        checkboxent10 = tk.IntVar(value=1)
+        box10 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent10, offvalue=0, onvalue=1)
+        box10.grid(row=2, column=10, sticky=tk.W+tk.E)
+
+        checkboxent11 = tk.IntVar(value=1)
+        box11 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent11, offvalue=0, onvalue=1)
+        box11.grid(row=3, column=1, sticky=tk.W+tk.E)
+
+        checkboxent12 = tk.IntVar(value=1)
+        box12 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent12, offvalue=0, onvalue=1)
+        box12.grid(row=3, column=2, sticky=tk.W+tk.E)
+
+        checkboxent13 = tk.IntVar(value=1)
+        box13 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent13, offvalue=0, onvalue=1)
+        box13.grid(row=3, column=3, sticky=tk.W+tk.E)
+
+        checkboxent14 = tk.IntVar(value=1)
+        box14 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent14, offvalue=0, onvalue=1)
+        box14.grid(row=3, column=4, sticky=tk.W+tk.E)
+
+        checkboxent15 = tk.IntVar(value=1)
+        box15 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent15, offvalue=0, onvalue=1)
+        box15.grid(row=3, column=5, sticky=tk.W+tk.E)
+
+        checkboxent16 = tk.IntVar(value=1)
+        box16 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent16, offvalue=0, onvalue=1)
+        box16.grid(row=3, column=6, sticky=tk.W+tk.E)
+
+        checkboxent17 = tk.IntVar(value=1)
+        box17 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent17, offvalue=0, onvalue=1)
+        box17.grid(row=3, column=7, sticky=tk.W+tk.E)
+
+        checkboxent18 = tk.IntVar(value=1)
+        box18 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent18, offvalue=0, onvalue=1)
+        box18.grid(row=3, column=8, sticky=tk.W+tk.E)
+
+        checkboxent19 = tk.IntVar(value=1)
+        box19 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent19, offvalue=0, onvalue=1)
+        box19.grid(row=3, column=9, sticky=tk.W+tk.E)
+
+        checkboxent20 = tk.IntVar(value=1)
+        box20 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent20, offvalue=0, onvalue=1)
+        box20.grid(row=3, column=10, sticky=tk.W+tk.E)
+
+        checkboxent21 = tk.IntVar(value=1)
+        box21 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent21, offvalue=0, onvalue=1)
+        box21.grid(row=4, column=1, sticky=tk.W+tk.E)
+
+        checkboxent22 = tk.IntVar(value=1)
+        box22 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent22, offvalue=0, onvalue=1)
+        box22.grid(row=4, column=2, sticky=tk.W+tk.E)
+
+        checkboxent23 = tk.IntVar(value=1)
+        box23 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent23, offvalue=0, onvalue=1)
+        box23.grid(row=4, column=3, sticky=tk.W+tk.E)
+
+        checkboxent24 = tk.IntVar(value=1)
+        box24 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent24, offvalue=0, onvalue=1)
+        box24.grid(row=4, column=4, sticky=tk.W+tk.E)
+
+        checkboxent25 = tk.IntVar(value=1)
+        box25 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent25, offvalue=0, onvalue=1)
+        box25.grid(row=4, column=5, sticky=tk.W+tk.E)
+
+        checkboxent26 = tk.IntVar(value=1)
+        box26 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent26, offvalue=0, onvalue=1)
+        box26.grid(row=4, column=6, sticky=tk.W+tk.E)
+
+        checkboxent27 = tk.IntVar(value=1)
+        box27 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent27, offvalue=0, onvalue=1)
+        box27.grid(row=4, column=7, sticky=tk.W+tk.E)
+
+        checkboxent28 = tk.IntVar(value=1)
+        box28 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent28, offvalue=0, onvalue=1)
+        box28.grid(row=4, column=8, sticky=tk.W+tk.E)
+
+        checkboxent29 = tk.IntVar(value=1)
+        box29 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent29, offvalue=0, onvalue=1)
+        box29.grid(row=4, column=9, sticky=tk.W+tk.E)
+
+        checkboxent30 = tk.IntVar(value=1)
+        box30 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent30, offvalue=0, onvalue=1)
+        box30.grid(row=4, column=10, sticky=tk.W+tk.E)
+
+        checkboxent31 = tk.IntVar(value=1)
+        box31 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent31, offvalue=0, onvalue=1)
+        box31.grid(row=5, column=1, sticky=tk.W+tk.E)
+
+        checkboxent32 = tk.IntVar(value=1)
+        box32 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent32, offvalue=0, onvalue=1)
+        box32.grid(row=5, column=2, sticky=tk.W+tk.E)
+
+        checkboxent33 = tk.IntVar(value=1)
+        box33 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent33, offvalue=0, onvalue=1)
+        box33.grid(row=5, column=3, sticky=tk.W+tk.E)
+
+        checkboxent34 = tk.IntVar(value=1)
+        box34 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent34, offvalue=0, onvalue=1)
+        box34.grid(row=5, column=4, sticky=tk.W+tk.E)
+
+        checkboxent35 = tk.IntVar(value=1)
+        box35 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent35, offvalue=0, onvalue=1)
+        box35.grid(row=5, column=5, sticky=tk.W+tk.E)
+
+        checkboxent36 = tk.IntVar(value=1)
+        box36 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent36, offvalue=0, onvalue=1)
+        box36.grid(row=5, column=6, sticky=tk.W+tk.E)
+
+        checkboxent37 = tk.IntVar(value=1)
+        box37 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent37, offvalue=0, onvalue=1)
+        box37.grid(row=5, column=7, sticky=tk.W+tk.E)
+
+        checkboxent38 = tk.IntVar(value=1)
+        box38 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent38, offvalue=0, onvalue=1)
+        box38.grid(row=5, column=8, sticky=tk.W+tk.E)
+
+        checkboxent39 = tk.IntVar(value=1)
+        box39 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent39, offvalue=0, onvalue=1)
+        box39.grid(row=5, column=9, sticky=tk.W+tk.E)
+
+        checkboxent40 = tk.IntVar(value=1)
+        box40 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent40, offvalue=0, onvalue=1)
+        box40.grid(row=5, column=10, sticky=tk.W+tk.E)
+
+        frame.pack(fill="x") 
+
+        change_list()
+        wind.mainloop()   
+
+    #ALGORITHM
+    def algorithm(self):
+            wind = tk.Toplevel(self.window)
+            wind.title("Algorithm")
+            wind.state('zoomed')  # Start maximized
+            wind.grab_set()
+            
+            def on_window_restore(event=None):
+                if wind.state() == 'normal':
+                    wind.grab_set()
+                    
+            wind.bind('<Map>', on_window_restore)
+            wind.protocol("WM_DELETE_WINDOW", wind.destroy)
+            
+            main_container = tk.PanedWindow(wind, orient=tk.HORIZONTAL)
+            main_container.pack(fill=tk.BOTH, expand=True)
+
+            # Left side - Timetable (increased minimum width)
+            left_frame = tk.Frame(main_container)
+            main_container.add(left_frame)
+            
+            # Right side - Controls with reduced width
+            right_frame = tk.Frame(main_container, width=250)  # Reduced to 250
+            main_container.add(right_frame)
+            right_frame.pack_propagate(False)
+
+            main_container.paneconfig(left_frame, minsize=900)  # Increased left side
+            main_container.paneconfig(right_frame, minsize=250, width=250)  # Fixed width to 250
+
+            # Controls section - simplified without listbox
+            control_panel = tk.LabelFrame(right_frame, text="Controls", font=("Arial", 12, "bold"))
+            control_panel.pack(fill=tk.X, padx=5, pady=5)
+
+            btn_frame = tk.Frame(control_panel)
+            btn_frame.pack(fill=tk.X, padx=5, pady=5)
+            
+            start_btn = tk.Button(btn_frame, text="Start Algorithm", font=("Arial", 12))
+            start_btn.pack(fill=tk.X, padx=5, pady=2)
+            
+            view_btn = tk.Button(btn_frame, text="View Saved Schedule", font=("Arial", 12))
+            view_btn.pack(fill=tk.X, padx=5, pady=2)
+
+            # Filter controls with notebook and listboxes
+            filter_frame = tk.LabelFrame(right_frame, text="Filters", font=("Arial", 12, "bold"))
+            filter_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            filter_var = tk.StringVar(value="all")
+            tk.Radiobutton(filter_frame, text="Show All", variable=filter_var, 
+                          value="all", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Subject", variable=filter_var,
+                          value="subject", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Teacher", variable=filter_var,
+                          value="teacher", font=("Arial", 10)).pack(anchor=tk.W)
+            tk.Radiobutton(filter_frame, text="Show Selected Student", variable=filter_var,
+                          value="student", font=("Arial", 10)).pack(anchor=tk.W)
+
+            # Create listbox variables first
+            subject_listbox = None
+            teacher_listbox = None  
+            student_listbox = None
+
+            filter_notebook = ttk.Notebook(filter_frame)
+            filter_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Subject tab with larger height
+            subject_frame = tk.Frame(filter_notebook) 
+            filter_notebook.add(subject_frame, text="Subject")
+            subject_listbox = tk.Listbox(subject_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
+            subject_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Teacher tab with larger height 
+            teacher_frame = tk.Frame(filter_notebook)
+            filter_notebook.add(teacher_frame, text="Teacher")
+            teacher_listbox = tk.Listbox(teacher_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
+            teacher_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Student tab with larger height
+            student_frame = tk.Frame(filter_notebook)
+            filter_notebook.add(student_frame, text="Student")
+            student_listbox = tk.Listbox(student_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=6)
+            student_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+            # Validation panel
+            validation_frame = tk.LabelFrame(right_frame, text="Validation Results", font=("Arial", 12, "bold"))
+            validation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            validation_text = tk.Text(validation_frame, font=("Courier", 10), height=8)
+            validation_scroll = tk.Scrollbar(validation_frame, command=validation_text.yview)
+            validation_text.configure(yscrollcommand=validation_scroll.set)
+            validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+            validation_text.pack(fill=tk.BOTH, expand=True)
+
+            # Timetable canvas with mouse wheel binding
+            canvas_frame = tk.Frame(left_frame)
+            canvas_frame.pack(fill=tk.BOTH, expand=True)
+
+            main_canvas = tk.Canvas(canvas_frame)
+            main_scrollbar_y = tk.Scrollbar(canvas_frame, orient="vertical", command=main_canvas.yview)
+            main_scrollbar_x = tk.Scrollbar(canvas_frame, orient="horizontal", command=main_canvas.xview)
+            
+            timetable_frame = tk.Frame(main_canvas)
+
+            # Add mouse wheel bindings
+            def on_mouse_wheel(event):
+                if event.state == 0:  # No modifier keys
+                    main_canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+                elif event.state & 1:  # Shift key
+                    main_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
+            
+            main_canvas.bind_all("<MouseWheel>", on_mouse_wheel)
+            
+            def on_configure(event):
+                main_canvas.configure(scrollregion=main_canvas.bbox("all"))
+            
+            timetable_frame.bind('<Configure>', on_configure)
+            main_canvas_window = main_canvas.create_window((0, 0), window=timetable_frame, anchor='nw')
+            
+            main_canvas.configure(yscrollcommand=main_scrollbar_y.set,
+                                xscrollcommand=main_scrollbar_x.set)
+            
+            main_scrollbar_y.pack(side=tk.RIGHT, fill=tk.Y)
+            main_scrollbar_x.pack(side=tk.BOTTOM, fill=tk.X)
+            main_canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+            def create_session_card(parent, session, scale=1.0):
+                frame = tk.Frame(parent, relief="raised", bd=1, bg='#f5f5f5')
+                
+                # Header with subject
+                header = tk.Label(frame, text=f"{session['subject_name']} (G{session.get('group', 1)})",
+                                font=("Arial", int(11*scale), "bold"), bg='#e0e0e0')
+                header.pack(fill=tk.X, padx=2, pady=1)
+                
+                # Teacher
+                if session.get('teachers'):
+                    teacher = tk.Label(frame, text=session['teachers'][0].get('name', ''),
+                                     font=("Arial", int(10*scale)), bg='#f5f5f5')
+                    teacher.pack(fill=tk.X, padx=2)
+                
+                # Student count and list
+                students = session.get('students', [])
+                if students:
+                    count_frame = tk.Frame(frame, bg='#f5f5f5')
+                    count_frame.pack(fill=tk.X, padx=2)
+                    
+                    tk.Label(count_frame, text=f"Students: {len(students)}", 
+                           font=("Arial", int(9*scale)), bg='#f5f5f5').pack(side=tk.LEFT)
+                    
+                    def show_students():
+                        dialog = tk.Toplevel(wind)
+                        dialog.title(f"Students - {session['subject_name']}")
+                        dialog.geometry("300x400")
+                        
+                        list_box = tk.Listbox(dialog, font=("Arial", 10))
+                        list_box.pack(fill=tk.BOTH, expand=True)
+                        
+                        for student in students:
+                            list_box.insert(tk.END, student['name'])
+                            
+                    tk.Button(count_frame, text="Show List", 
+                             font=("Arial", int(8*scale)), command=show_students).pack(side=tk.RIGHT)
+                
+                return frame
+
+            def update_timetable_display(schedule_data=None, filter_type=None, filter_value=None):
+                for widget in timetable_frame.winfo_children():
+                    widget.destroy()
+                
+                days = ["Monday", "Tuesday", "Wednesday", "Thursday"]
+                hours = range(1, 11)
+                
+                # Headers
+                tk.Label(timetable_frame, text="Hour", font=("Arial", 12, "bold"),
+                        width=8).grid(row=0, column=0, sticky='nsew')
+                
+                for i, day in enumerate(days):
+                    tk.Label(timetable_frame, text=day, font=("Arial", 12, "bold"),
+                            width=35).grid(row=0, column=i+1, sticky='nsew')
+                
+                # Time slots
+                for hour in hours:
+                    tk.Label(timetable_frame, text=str(hour),
+                            font=("Arial", 12)).grid(row=hour, column=0)
+                    
+                    for day in range(4):
+                        cell = tk.Frame(timetable_frame, relief="solid", bd=1)
+                        cell.grid(row=hour, column=day+1, padx=2, pady=2, sticky='nsew')
+                        cell.configure(width=300, height=150)
+                        cell.grid_propagate(False)
+                        
+                        if schedule_data and str(day) in schedule_data.get('days', {}):
+                            sessions = schedule_data['days'][str(day)].get(str(hour-1), [])
+                            if sessions:
+                                inner_frame = tk.Frame(cell)
+                                inner_frame.pack(fill=tk.BOTH, expand=True)
+                                
+                                for session in sessions:
+                                    show_session = True
+                                    if filter_type == "subject":
+                                        show_session = session['subject_name'] == filter_value
+                                    elif filter_type == "teacher":
+                                        show_session = any(t['name'] == filter_value for t in session['teachers'])
+                                    elif filter_type == "student":
+                                        show_session = any(s['name'] == filter_value for s in session['students'])
+                                    
+                                    if show_session:
+                                        card = create_session_card(inner_frame, session)
+                                        card.pack(fill=tk.X, padx=2, pady=1)
+
+            algorithm_thread = None
+            is_running = False
+
+            def toggle_algorithm():
+                nonlocal algorithm_thread, is_running
+                
+                if not is_running:
+                    is_running = True
+                    self.stop_requested = False
+                    start_btn.config(text="Stop Algorithm")
+                    update_timetable_display()
+
+                    def run_algorithm():
+                        try:
+                            from algorithm import (
+                                load_data, build_sessions, solve_timetable,
+                                format_schedule_output, validate_final_schedule, logger
+                            )
+                            
+                            logger.info("Loading data...")
+                            teachers, subjects, students_raw, st_map, stud_map, hb, student_groups = load_data()
+                            
+                            if not teachers or not subjects or not students_raw:
+                                raise ValueError("Missing required data")
+                            
+                            logger.info("Building sessions...")
+                            sessions = build_sessions(teachers, subjects, st_map, stud_map, hb)
+                            
+                            if not sessions:
+                                raise ValueError("Failed to create valid sessions")
+                            
+                            logger.info("Starting solver...")
+                            schedule, students_dict = solve_timetable(sessions, time_limit=1200, stop_flag=lambda: self.stop_requested)
+                            
+                            if schedule and not self.stop_requested:
+                                logger.info("Schedule found, validating...")
+                                formatted_schedule = format_schedule_output(schedule, subjects, teachers, students_dict)
+                                validation_stats = validate_final_schedule(schedule, sessions, subjects, teachers)
+                                
+                                with open('schedule_output.json', 'w') as f:
+                                    json.dump(formatted_schedule, f, indent=2)
+                                    
+                                # Populate filter lists
+                                def update_filters():
+                                    subject_listbox.delete(0, tk.END)
+                                    teacher_listbox.delete(0, tk.END)
+                                    student_listbox.delete(0, tk.END)
+                                    
+                                    subjects = set()
+                                    teachers = set()
+                                    students = set()
+                                    
+                                    for day in formatted_schedule.get('days', {}).values():
+                                        for period in day.values():
+                                            for session in period:
+                                                subjects.add(session['subject_name'])
+                                                for teacher in session['teachers']:
+                                                    teachers.add(teacher['name'])
+                                                for student in session['students']:
+                                                    students.add(student['name'])
+                                    
+                                    # Populate the listboxes with sorted items
+                                    for subject in sorted(subjects):
+                                        subject_listbox.insert(tk.END, subject)
+                                    for teacher in sorted(teachers):
+                                        teacher_listbox.insert(tk.END, teacher)
+                                    for student in sorted(students):
+                                        student_listbox.insert(tk.END, student)
+
+                                wind.after(0, update_filters)
+                                wind.after(0, lambda: update_timetable_display(formatted_schedule))
+                                wind.after(0, lambda: display_validation_results(validation_stats))
+                                wind.after(0, lambda: messagebox.showinfo("Success", 
+                                        f"Schedule generated with {formatted_schedule['metadata']['total_sessions']} sessions"))
+                            elif self.stop_requested:
+                                logger.info("Algorithm stopped by user")
+                            else:
+                                raise ValueError("Could not find valid schedule")
+                                
+                        except Exception as e:
+                            if not self.stop_requested:
+                                wind.after(0, lambda: messagebox.showerror("Error", str(e)))
+                                logger.exception("Algorithm error")
+                        finally:
+                            wind.after(0, stop_algorithm)
+
+                    algorithm_thread = threading.Thread(target=run_algorithm)
+                    algorithm_thread.daemon = True
+                    algorithm_thread.start()
+                else:
+                    # Request stop
+                    self.stop_requested = True
+                    logger.info("Stopping algorithm...")
+                    start_btn.config(text="Stopping...", state="disabled")
+
+            def stop_algorithm():
+                nonlocal algorithm_thread, is_running
+                is_running = False
+                algorithm_thread = None
+                start_btn.config(text="Start Algorithm", state="normal")
+
+            def display_validation_results(validation_stats):
+                validation_text.config(state='normal')
+                validation_text.delete(1.0, tk.END)
+                
+                validation_text.insert(tk.END, "=== Validation Results ===\n\n")
+                validation_text.insert(tk.END, "Conflicts:\n")
+                validation_text.insert(tk.END, f"- Student conflicts: {validation_stats['student_conflicts']}\n")
+                validation_text.insert(tk.END, f"- Teacher conflicts: {validation_stats['teacher_conflicts']}\n\n")
+                
+                validation_text.insert(tk.END, "Subject Hours:\n")
+                for sid, scheduled in validation_stats['subject_hours'].items():
+                    required = validation_stats['required_hours'][sid]
+                    status = "✓" if scheduled == required else "✗"
+                    validation_text.insert(tk.END, f"- Subject {sid}: {scheduled}/{required} {status}\n")
+                
+                validation_text.insert(tk.END, "\nTeacher Daily Loads:\n")
+                for tid, loads in validation_stats['teacher_daily_load'].items():
+                    validation_text.insert(tk.END, f"- Teacher {tid}:\n")
+                    for day, count in loads.items():
+                        validation_text.insert(tk.END, f"  Day {day+1}: {count}\n")
+                
+                validation_text.config(state='disabled')
+
+            # Update button commands (moved after function definitions)
+            start_btn.configure(command=toggle_algorithm)
+            view_btn.configure(command=lambda: display_schedule())
+
+            # Initialize empty timetable
+            update_timetable_display()
+
+            # Configure logging
+            class TextHandler(logging.Handler):
+                def emit(self, record):
+                    msg = self.format(record)
+            
+            text_handler = TextHandler()
+            text_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+            logger = logging.getLogger()
+            logger.addHandler(text_handler)
+
+            # Update the display_schedule function to use the new layout
+            def display_schedule():
+                try:
+                    with open('schedule_output.json', 'r') as f:
+                        schedule_data = json.load(f)
+                    
+                    # Clear and update filter lists
+                    subject_listbox.delete(0, tk.END)
+                    teacher_listbox.delete(0, tk.END)
+                    student_listbox.delete(0, tk.END)
+                    
+                    subjects = set()
+                    teachers = set()
+                    students = set()
+                    
+                    for day in schedule_data.get('days', {}).values():
+                        for period in day.values():
+                            for session in period:
+                                subjects.add(session['subject_name'])
+                                for teacher in session['teachers']:
+                                    teachers.add(teacher['name'])
+                                for student in session['students']:
+                                    students.add(student['name'])
+                
+                    # Populate the listboxes with sorted items
+                    for subject in sorted(subjects):
+                        subject_listbox.insert(tk.END, subject)
+                    for teacher in sorted(teachers):
+                        teacher_listbox.insert(tk.END, teacher)
+                    for student in sorted(students):
+                        student_listbox.insert(tk.END, student)
+                        
+                    update_timetable_display(schedule_data)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to load schedule: {str(e)}")
+
+            def apply_filter(*args):
+                filter_type = filter_var.get()
+                try:
+                    with open('schedule_output.json', 'r') as f:
+                        schedule_data = json.load(f)
+                    
+                    if filter_type == "subject":
+                        selected = subject_listbox.curselection()
+                        if selected:
+                            filter_value = subject_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "subject", filter_value)
+                    elif filter_type == "teacher":
+                        selected = teacher_listbox.curselection()
+                        if selected:
+                            filter_value = teacher_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "teacher", filter_value)
+                    elif filter_type == "student":
+                        selected = student_listbox.curselection()
+                        if selected:
+                            filter_value = student_listbox.get(selected[0])
+                            update_timetable_display(schedule_data, "student", filter_value)
+                    else:
+                        update_timetable_display(schedule_data)
+                except Exception:
+                    pass
+
+            # Move bindings to after listbox creation
+            filter_var.trace('w', apply_filter)
+            subject_listbox.bind('<<ListboxSelect>>', apply_filter)
+            teacher_listbox.bind('<<ListboxSelect>>', apply_filter)
+            student_listbox.bind('<<ListboxSelect>>', apply_filter)
+
+            # Add these functions after creating the widgets but before the mainloop
+            def on_enter_listbox(event):
+                # Unbind main canvas scrolling when hovering over listboxes
+                main_canvas.unbind_all("<MouseWheel>")
+                
+            def on_leave_listbox(event):
+                # Rebind main canvas scrolling when leaving listboxes
+                main_canvas.bind_all("<MouseWheel>", on_mouse_wheel)
+
+            # Add mouse enter/leave bindings to the listboxes
+            for lb in [subject_listbox, teacher_listbox, student_listbox]:
+                lb.bind('<Enter>', on_enter_listbox)
+                lb.bind('<Leave>', on_leave_listbox)
+            
+            # Add bindings for validation text
+            validation_text.bind('<Enter>', on_enter_listbox)
+            validation_text.bind('<Leave>', on_leave_listbox)
+
+
+MainGUI()
