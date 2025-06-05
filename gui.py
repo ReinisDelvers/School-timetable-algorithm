@@ -241,7 +241,6 @@ class MainGUI:
 
         frame = tk.Frame(wind)
         frame.grid(row=0, column=0)
-        # configure 11 columns
         for col in range(11):
             frame.columnconfigure(col, weight=1)
 
@@ -633,7 +632,6 @@ class MainGUI:
             selected_subject_id = rec[1]
             selected_teacher_id = rec[3]
 
-            # show current subject & teacher as text
             for s in subj_list:
                 if s[0] == rec[1]:
                     label3.config(text=f"{s}")
@@ -759,7 +757,6 @@ class MainGUI:
             subj_list = get_subject()
             stud_list = get_student()
 
-            # transform JSON list of subject IDs to names
             for rec in subject_student_list:
                 ids = json.loads(rec[1])
                 names = []
@@ -880,7 +877,6 @@ class MainGUI:
             columns = file.columns.tolist()
             rows = file.values.tolist()
 
-            # build student name list from first column
             stu_names = [ " ".join(str(v).split()) for v in file[columns[0]] ]
 
             existing_students = list(get_student())
@@ -926,7 +922,6 @@ class MainGUI:
                     showerror("Error", "Excel import aborted.")
                     return
 
-            # refresh student and subject lists
             existing_students = list(get_student())
             stud_remade = []
             for rec in existing_students:
@@ -1329,7 +1324,6 @@ class MainGUI:
                             self.filter_teachers = list(teachers_set)
                             self.filter_students = list(students_set)
 
-                            # Populate the listbox for current filter_var
                             wind.after(0, repopulate_listbox)
                             wind.after(0, lambda: update_timetable_display(formatted_schedule))
                             wind.after(0, lambda: display_validation_results(validation_stats))
@@ -1364,6 +1358,23 @@ class MainGUI:
             start_btn.config(text="Start Algorithm", state="normal")
 
         def display_validation_results(stats):
+            # Map subject IDs to names
+            subj_list = get_subject()
+            subj_map = { rec[0]: rec[1] for rec in subj_list }
+            # Map teacher IDs to full names
+            teach_list = get_teacher()
+            teach_map = {}
+            for rec in teach_list:
+                tid = rec[0]
+                first = rec[1]
+                mid = rec[2]
+                last = rec[3]
+                if mid:
+                    name = f"{first} {mid} {last}"
+                else:
+                    name = f"{first} {last}"
+                teach_map[tid] = name
+
             validation_text.config(state='normal')
             validation_text.delete(1.0, tk.END)
 
@@ -1373,16 +1384,18 @@ class MainGUI:
             validation_text.insert(tk.END, f"- Teacher conflicts: {stats['teacher_conflicts']}\n\n")
 
             validation_text.insert(tk.END, "Subject Hours:\n")
-            for sid, sch in stats['subject_hours'].items():
-                req = stats['required_hours'][sid]
-                status = "✓" if sch == req else "✗"
-                validation_text.insert(tk.END, f"- Subject {sid}: {sch}/{req} {status}\n")
+            for sid, scheduled in stats['subject_hours'].items():
+                required = stats['required_hours'][sid]
+                status = "✓" if scheduled == required else "✗"
+                name = subj_map.get(sid, f"ID {sid}")
+                validation_text.insert(tk.END, f"- {name}: {scheduled}/{required} {status}\n")
 
             validation_text.insert(tk.END, "\nTeacher Daily Loads:\n")
             for tid, loads in stats['teacher_daily_load'].items():
-                validation_text.insert(tk.END, f"- Teacher {tid}:\n")
-                for day, cnt in loads.items():
-                    validation_text.insert(tk.END, f"  Day {day+1}: {cnt}\n")
+                name = teach_map.get(tid, f"ID {tid}")
+                validation_text.insert(tk.END, f"- {name}:\n")
+                for day, count in loads.items():
+                    validation_text.insert(tk.END, f"  Day {day+1}: {count}\n")
 
             validation_text.config(state='disabled')
 
@@ -1407,7 +1420,6 @@ class MainGUI:
                 with open('schedule_output.json', 'r') as f:
                     schedule_data = json.load(f)
 
-                # rebuild filter sets
                 subj_set = set()
                 teach_set = set()
                 stud_set = set()
@@ -1428,7 +1440,7 @@ class MainGUI:
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to load schedule: {str(e)}")
 
-        def apply_filter(_evt=None):
+        def apply_filter(*args):
             filter_type = filter_var.get()
             try:
                 with open('schedule_output.json', 'r') as f:
