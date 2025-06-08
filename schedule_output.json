@@ -576,7 +576,7 @@
       ],
       "1": [
         {
-          "id": "S74_B2_420976_G1",
+          "id": "S74_B2_360954_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -681,10 +681,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_420976"
+          "parallel_group_id": "S74_B2_360954"
         },
         {
-          "id": "S74_B2_420976_G2",
+          "id": "S74_B2_360954_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -785,10 +785,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_420976"
+          "parallel_group_id": "S74_B2_360954"
         },
         {
-          "id": "S75_B2_107326",
+          "id": "S75_B2_595205",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
@@ -902,7 +902,7 @@
       ],
       "2": [
         {
-          "id": "S74_B2_420976_G1",
+          "id": "S74_B2_360954_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -1007,10 +1007,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_420976"
+          "parallel_group_id": "S74_B2_360954"
         },
         {
-          "id": "S74_B2_420976_G2",
+          "id": "S74_B2_360954_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -1111,10 +1111,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_420976"
+          "parallel_group_id": "S74_B2_360954"
         },
         {
-          "id": "S75_B2_107326",
+          "id": "S75_B2_595205",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
@@ -1482,7 +1482,7 @@
       ],
       "8": [
         {
-          "id": "S72_B2_771569",
+          "id": "S72_B2_171511",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
@@ -1606,7 +1606,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_280214_G1",
+          "id": "S53_B2_100909_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -1671,10 +1671,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_280214"
+          "parallel_group_id": "S53_B2_100909"
         },
         {
-          "id": "S53_B2_280214_G2",
+          "id": "S53_B2_100909_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1734,12 +1734,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_280214"
+          "parallel_group_id": "S53_B2_100909"
         }
       ],
       "9": [
         {
-          "id": "S72_B2_771569",
+          "id": "S72_B2_171511",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
@@ -1863,7 +1863,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_280214_G1",
+          "id": "S53_B2_100909_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -1928,10 +1928,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_280214"
+          "parallel_group_id": "S53_B2_100909"
         },
         {
-          "id": "S53_B2_280214_G2",
+          "id": "S53_B2_100909_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1991,12 +1991,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_280214"
+          "parallel_group_id": "S53_B2_100909"
         }
       ],
       "6": [
         {
-          "id": "S64_B2_785832",
+          "id": "S64_B2_148735",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -2100,7 +2100,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_249531",
+          "id": "S79_B2_726070",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -2150,7 +2150,7 @@
       ],
       "7": [
         {
-          "id": "S64_B2_785832",
+          "id": "S64_B2_148735",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -2254,7 +2254,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_249531",
+          "id": "S79_B2_726070",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -2850,7 +2850,7 @@
       ],
       "2": [
         {
-          "id": "S74_B2_776973_G1",
+          "id": "S74_B2_506710_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -2955,10 +2955,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_776973"
+          "parallel_group_id": "S74_B2_506710"
         },
         {
-          "id": "S74_B2_776973_G2",
+          "id": "S74_B2_506710_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3059,12 +3059,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_776973"
+          "parallel_group_id": "S74_B2_506710"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_776973_G1",
+          "id": "S74_B2_506710_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3169,10 +3169,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_776973"
+          "parallel_group_id": "S74_B2_506710"
         },
         {
-          "id": "S74_B2_776973_G2",
+          "id": "S74_B2_506710_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3273,7 +3273,7 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_776973"
+          "parallel_group_id": "S74_B2_506710"
         },
         {
           "id": "S75_H0",
@@ -3390,7 +3390,7 @@
       ],
       "0": [
         {
-          "id": "S77_B2_478748",
+          "id": "S77_B2_896486",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -3562,7 +3562,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_71653",
+          "id": "S69_B2_603509",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
@@ -3588,7 +3588,7 @@
       ],
       "1": [
         {
-          "id": "S77_B2_478748",
+          "id": "S77_B2_896486",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -3760,7 +3760,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_71653",
+          "id": "S69_B2_603509",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
@@ -3786,107 +3786,273 @@
       ],
       "8": [
         {
-          "id": "S79_B2_678826",
-          "subject_id": 79,
-          "subject_name": "Programm\u0113\u0161ana II",
+          "id": "S53_B2_307542_G1",
+          "subject_id": 53,
+          "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 42,
-              "name": "Marta  Brit\u0101la"
+              "id": 45,
+              "name": "Anna Elizabete Kaspersone"
             }
           ],
           "students": [
             {
-              "id": 314,
-              "name": "Abigail Marie Sanchez"
+              "id": 287,
+              "name": "John Michael Smith"
             },
             {
-              "id": 323,
-              "name": "Ethan James Harris"
+              "id": 296,
+              "name": "Mia Elizabeth Young"
             },
             {
-              "id": 333,
-              "name": "James Lucas Harris"
+              "id": 305,
+              "name": "Matthew Ryan Carter"
             },
             {
-              "id": 336,
-              "name": "Grace Ella Howard"
+              "id": 309,
+              "name": "Elijah Noah Cooper"
             },
             {
-              "id": 349,
-              "name": "Harper Grace Simmons"
+              "id": 325,
+              "name": "Joshua David Morris"
             },
             {
-              "id": 358,
-              "name": "Lucas Oliver Nelson"
+              "id": 329,
+              "name": "Samuel Daniel Rivera"
             },
             {
-              "id": 360,
-              "name": "Leo Alexander Ward"
+              "id": 330,
+              "name": "Mia Scarlett Foster"
             },
             {
-              "id": 374,
-              "name": "Mason Riley Thompson"
+              "id": 331,
+              "name": "Lucas Ryan Mitchell"
+            },
+            {
+              "id": 337,
+              "name": "Nathaniel John Ward"
+            },
+            {
+              "id": 339,
+              "name": "Carter Michael Campbell"
+            },
+            {
+              "id": 342,
+              "name": "Chloe Sophia Perez"
+            },
+            {
+              "id": 343,
+              "name": "Samuel Eli Hall"
+            },
+            {
+              "id": 346,
+              "name": "Ella Grace Richardson"
             }
           ],
           "group": 1,
-          "is_parallel": false,
-          "parallel_group_id": null
+          "is_parallel": true,
+          "parallel_group_id": "S53_B2_307542"
+        },
+        {
+          "id": "S53_B2_307542_G2",
+          "subject_id": 53,
+          "subject_name": "Dizains un tehnolo\u0123ijas II",
+          "teachers": [],
+          "students": [
+            {
+              "id": 347,
+              "name": "Liam Mason Bennett"
+            },
+            {
+              "id": 350,
+              "name": "Jacob Lucas Harris"
+            },
+            {
+              "id": 351,
+              "name": "Charlotte Kate Roberts"
+            },
+            {
+              "id": 354,
+              "name": "William Jacob Parker"
+            },
+            {
+              "id": 355,
+              "name": "Lily Grace Rodriguez"
+            },
+            {
+              "id": 362,
+              "name": "Noah Elias Jenkins"
+            },
+            {
+              "id": 364,
+              "name": "Matthew Elijah Thomas"
+            },
+            {
+              "id": 365,
+              "name": "Ava Elizabeth Bailey"
+            },
+            {
+              "id": 366,
+              "name": "Jameson Luke Harris"
+            },
+            {
+              "id": 369,
+              "name": "Grace Abigail Williams"
+            },
+            {
+              "id": 370,
+              "name": "Liam Nathaniel Hayes"
+            },
+            {
+              "id": 371,
+              "name": "Emily Anne Green"
+            },
+            {
+              "id": 372,
+              "name": "Aiden James White"
+            }
+          ],
+          "group": 2,
+          "is_parallel": true,
+          "parallel_group_id": "S53_B2_307542"
         }
       ],
       "9": [
         {
-          "id": "S79_B2_678826",
-          "subject_id": 79,
-          "subject_name": "Programm\u0113\u0161ana II",
+          "id": "S53_B2_307542_G1",
+          "subject_id": 53,
+          "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 42,
-              "name": "Marta  Brit\u0101la"
+              "id": 45,
+              "name": "Anna Elizabete Kaspersone"
             }
           ],
           "students": [
             {
-              "id": 314,
-              "name": "Abigail Marie Sanchez"
+              "id": 287,
+              "name": "John Michael Smith"
             },
             {
-              "id": 323,
-              "name": "Ethan James Harris"
+              "id": 296,
+              "name": "Mia Elizabeth Young"
             },
             {
-              "id": 333,
-              "name": "James Lucas Harris"
+              "id": 305,
+              "name": "Matthew Ryan Carter"
             },
             {
-              "id": 336,
-              "name": "Grace Ella Howard"
+              "id": 309,
+              "name": "Elijah Noah Cooper"
             },
             {
-              "id": 349,
-              "name": "Harper Grace Simmons"
+              "id": 325,
+              "name": "Joshua David Morris"
             },
             {
-              "id": 358,
-              "name": "Lucas Oliver Nelson"
+              "id": 329,
+              "name": "Samuel Daniel Rivera"
             },
             {
-              "id": 360,
-              "name": "Leo Alexander Ward"
+              "id": 330,
+              "name": "Mia Scarlett Foster"
             },
             {
-              "id": 374,
-              "name": "Mason Riley Thompson"
+              "id": 331,
+              "name": "Lucas Ryan Mitchell"
+            },
+            {
+              "id": 337,
+              "name": "Nathaniel John Ward"
+            },
+            {
+              "id": 339,
+              "name": "Carter Michael Campbell"
+            },
+            {
+              "id": 342,
+              "name": "Chloe Sophia Perez"
+            },
+            {
+              "id": 343,
+              "name": "Samuel Eli Hall"
+            },
+            {
+              "id": 346,
+              "name": "Ella Grace Richardson"
             }
           ],
           "group": 1,
-          "is_parallel": false,
-          "parallel_group_id": null
+          "is_parallel": true,
+          "parallel_group_id": "S53_B2_307542"
+        },
+        {
+          "id": "S53_B2_307542_G2",
+          "subject_id": 53,
+          "subject_name": "Dizains un tehnolo\u0123ijas II",
+          "teachers": [],
+          "students": [
+            {
+              "id": 347,
+              "name": "Liam Mason Bennett"
+            },
+            {
+              "id": 350,
+              "name": "Jacob Lucas Harris"
+            },
+            {
+              "id": 351,
+              "name": "Charlotte Kate Roberts"
+            },
+            {
+              "id": 354,
+              "name": "William Jacob Parker"
+            },
+            {
+              "id": 355,
+              "name": "Lily Grace Rodriguez"
+            },
+            {
+              "id": 362,
+              "name": "Noah Elias Jenkins"
+            },
+            {
+              "id": 364,
+              "name": "Matthew Elijah Thomas"
+            },
+            {
+              "id": 365,
+              "name": "Ava Elizabeth Bailey"
+            },
+            {
+              "id": 366,
+              "name": "Jameson Luke Harris"
+            },
+            {
+              "id": 369,
+              "name": "Grace Abigail Williams"
+            },
+            {
+              "id": 370,
+              "name": "Liam Nathaniel Hayes"
+            },
+            {
+              "id": 371,
+              "name": "Emily Anne Green"
+            },
+            {
+              "id": 372,
+              "name": "Aiden James White"
+            }
+          ],
+          "group": 2,
+          "is_parallel": true,
+          "parallel_group_id": "S53_B2_307542"
         }
       ],
       "6": [
         {
-          "id": "S64_B2_669911",
+          "id": "S64_B2_371354",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -3992,7 +4158,7 @@
       ],
       "7": [
         {
-          "id": "S64_B2_669911",
+          "id": "S64_B2_371354",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -4278,7 +4444,7 @@
     "1": {
       "4": [
         {
-          "id": "S57_B2_549208_G1",
+          "id": "S57_B2_445655_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4347,10 +4513,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G2",
+          "id": "S57_B2_445655_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4419,10 +4585,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G3",
+          "id": "S57_B2_445655_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4491,10 +4657,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G4",
+          "id": "S57_B2_445655_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4551,12 +4717,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_549208_G1",
+          "id": "S57_B2_445655_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4625,10 +4791,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G2",
+          "id": "S57_B2_445655_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4697,10 +4863,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G3",
+          "id": "S57_B2_445655_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4769,10 +4935,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         },
         {
-          "id": "S57_B2_549208_G4",
+          "id": "S57_B2_445655_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4829,12 +4995,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_549208"
+          "parallel_group_id": "S57_B2_445655"
         }
       ],
       "2": [
         {
-          "id": "S74_B2_592862_G1",
+          "id": "S74_B2_653399_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -4939,10 +5105,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_592862"
+          "parallel_group_id": "S74_B2_653399"
         },
         {
-          "id": "S74_B2_592862_G2",
+          "id": "S74_B2_653399_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5043,12 +5209,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_592862"
+          "parallel_group_id": "S74_B2_653399"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_592862_G1",
+          "id": "S74_B2_653399_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5153,10 +5319,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_592862"
+          "parallel_group_id": "S74_B2_653399"
         },
         {
-          "id": "S74_B2_592862_G2",
+          "id": "S74_B2_653399_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5257,12 +5423,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_592862"
+          "parallel_group_id": "S74_B2_653399"
         }
       ],
       "0": [
         {
-          "id": "S77_B2_568110",
+          "id": "S77_B2_220180",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -5436,7 +5602,7 @@
       ],
       "1": [
         {
-          "id": "S77_B2_568110",
+          "id": "S77_B2_220180",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -5634,7 +5800,7 @@
       ],
       "8": [
         {
-          "id": "S64_B2_842086",
+          "id": "S64_B2_395497",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -5740,7 +5906,7 @@
       ],
       "9": [
         {
-          "id": "S64_B2_842086",
+          "id": "S64_B2_395497",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -5846,7 +6012,7 @@
       ],
       "6": [
         {
-          "id": "S76_B2_526009",
+          "id": "S76_B2_614061",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -5938,7 +6104,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_302614",
+          "id": "S63_B2_148087",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -6016,7 +6182,7 @@
       ],
       "7": [
         {
-          "id": "S76_B2_526009",
+          "id": "S76_B2_614061",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -6108,7 +6274,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_302614",
+          "id": "S63_B2_148087",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -6188,7 +6354,7 @@
     "0": {
       "4": [
         {
-          "id": "S57_B2_355057_G1",
+          "id": "S57_B2_779829_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6257,10 +6423,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G2",
+          "id": "S57_B2_779829_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6329,10 +6495,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G3",
+          "id": "S57_B2_779829_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6401,10 +6567,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G4",
+          "id": "S57_B2_779829_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6461,12 +6627,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_355057_G1",
+          "id": "S57_B2_779829_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6535,10 +6701,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G2",
+          "id": "S57_B2_779829_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6607,10 +6773,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G3",
+          "id": "S57_B2_779829_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6679,10 +6845,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         },
         {
-          "id": "S57_B2_355057_G4",
+          "id": "S57_B2_779829_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6739,7 +6905,7 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_355057"
+          "parallel_group_id": "S57_B2_779829"
         }
       ],
       "3": [
@@ -7336,7 +7502,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_273476",
+          "id": "S63_B2_553479",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -7538,7 +7704,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_273476",
+          "id": "S63_B2_553479",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -7616,98 +7782,6 @@
       ],
       "8": [
         {
-          "id": "S76_B2_295411",
-          "subject_id": 76,
-          "subject_name": "Latvie\u0161u valoda II",
-          "teachers": [
-            {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
-            }
-          ],
-          "students": [
-            {
-              "id": 287,
-              "name": "John Michael Smith"
-            },
-            {
-              "id": 292,
-              "name": "Olivia Grace Taylor"
-            },
-            {
-              "id": 294,
-              "name": "Isabella Lily Clark"
-            },
-            {
-              "id": 295,
-              "name": "Benjamin Alexander Lewis"
-            },
-            {
-              "id": 296,
-              "name": "Mia Elizabeth Young"
-            },
-            {
-              "id": 299,
-              "name": "Samuel Jacob Robinson"
-            },
-            {
-              "id": 301,
-              "name": "Mason William King"
-            },
-            {
-              "id": 302,
-              "name": "Ella Abigail Scott"
-            },
-            {
-              "id": 309,
-              "name": "Elijah Noah Cooper"
-            },
-            {
-              "id": 311,
-              "name": "Jack Benjamin Evans"
-            },
-            {
-              "id": 312,
-              "name": "Emily Chloe Green"
-            },
-            {
-              "id": 315,
-              "name": "Leo Samuel Carter"
-            },
-            {
-              "id": 324,
-              "name": "Isabella Maria Parker"
-            },
-            {
-              "id": 325,
-              "name": "Joshua David Morris"
-            },
-            {
-              "id": 329,
-              "name": "Samuel Daniel Rivera"
-            },
-            {
-              "id": 338,
-              "name": "Abigail Rose Simmons"
-            },
-            {
-              "id": 339,
-              "name": "Carter Michael Campbell"
-            },
-            {
-              "id": 346,
-              "name": "Ella Grace Richardson"
-            },
-            {
-              "id": 375,
-              "name": "Olivia Sophia Robinson"
-            }
-          ],
-          "group": 1,
-          "is_parallel": false,
-          "parallel_group_id": null
-        },
-        {
           "id": "S78_H3",
           "subject_id": 78,
           "subject_name": "Fizika II",
@@ -7773,98 +7847,6 @@
         }
       ],
       "9": [
-        {
-          "id": "S76_B2_295411",
-          "subject_id": 76,
-          "subject_name": "Latvie\u0161u valoda II",
-          "teachers": [
-            {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
-            }
-          ],
-          "students": [
-            {
-              "id": 287,
-              "name": "John Michael Smith"
-            },
-            {
-              "id": 292,
-              "name": "Olivia Grace Taylor"
-            },
-            {
-              "id": 294,
-              "name": "Isabella Lily Clark"
-            },
-            {
-              "id": 295,
-              "name": "Benjamin Alexander Lewis"
-            },
-            {
-              "id": 296,
-              "name": "Mia Elizabeth Young"
-            },
-            {
-              "id": 299,
-              "name": "Samuel Jacob Robinson"
-            },
-            {
-              "id": 301,
-              "name": "Mason William King"
-            },
-            {
-              "id": 302,
-              "name": "Ella Abigail Scott"
-            },
-            {
-              "id": 309,
-              "name": "Elijah Noah Cooper"
-            },
-            {
-              "id": 311,
-              "name": "Jack Benjamin Evans"
-            },
-            {
-              "id": 312,
-              "name": "Emily Chloe Green"
-            },
-            {
-              "id": 315,
-              "name": "Leo Samuel Carter"
-            },
-            {
-              "id": 324,
-              "name": "Isabella Maria Parker"
-            },
-            {
-              "id": 325,
-              "name": "Joshua David Morris"
-            },
-            {
-              "id": 329,
-              "name": "Samuel Daniel Rivera"
-            },
-            {
-              "id": 338,
-              "name": "Abigail Rose Simmons"
-            },
-            {
-              "id": 339,
-              "name": "Carter Michael Campbell"
-            },
-            {
-              "id": 346,
-              "name": "Ella Grace Richardson"
-            },
-            {
-              "id": 375,
-              "name": "Olivia Sophia Robinson"
-            }
-          ],
-          "group": 1,
-          "is_parallel": false,
-          "parallel_group_id": null
-        },
         {
           "id": "S78_H2",
           "subject_id": 78,
@@ -7932,13 +7914,61 @@
       ],
       "6": [
         {
-          "id": "S53_B2_577340_G1",
-          "subject_id": 53,
-          "subject_name": "Dizains un tehnolo\u0123ijas II",
+          "id": "S79_B2_987130",
+          "subject_id": 79,
+          "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 45,
-              "name": "Anna Elizabete Kaspersone"
+              "id": 42,
+              "name": "Marta  Brit\u0101la"
+            }
+          ],
+          "students": [
+            {
+              "id": 314,
+              "name": "Abigail Marie Sanchez"
+            },
+            {
+              "id": 323,
+              "name": "Ethan James Harris"
+            },
+            {
+              "id": 333,
+              "name": "James Lucas Harris"
+            },
+            {
+              "id": 336,
+              "name": "Grace Ella Howard"
+            },
+            {
+              "id": 349,
+              "name": "Harper Grace Simmons"
+            },
+            {
+              "id": 358,
+              "name": "Lucas Oliver Nelson"
+            },
+            {
+              "id": 360,
+              "name": "Leo Alexander Ward"
+            },
+            {
+              "id": 374,
+              "name": "Mason Riley Thompson"
+            }
+          ],
+          "group": 1,
+          "is_parallel": false,
+          "parallel_group_id": null
+        },
+        {
+          "id": "S76_B2_185848",
+          "subject_id": 76,
+          "subject_name": "Latvie\u0161u valoda II",
+          "teachers": [
+            {
+              "id": 47,
+              "name": "Krist\u012bne  Sevele"
             }
           ],
           "students": [
@@ -7947,16 +7977,52 @@
               "name": "John Michael Smith"
             },
             {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
+            {
+              "id": 294,
+              "name": "Isabella Lily Clark"
+            },
+            {
+              "id": 295,
+              "name": "Benjamin Alexander Lewis"
+            },
+            {
               "id": 296,
               "name": "Mia Elizabeth Young"
             },
             {
-              "id": 305,
-              "name": "Matthew Ryan Carter"
+              "id": 299,
+              "name": "Samuel Jacob Robinson"
+            },
+            {
+              "id": 301,
+              "name": "Mason William King"
+            },
+            {
+              "id": 302,
+              "name": "Ella Abigail Scott"
             },
             {
               "id": 309,
               "name": "Elijah Noah Cooper"
+            },
+            {
+              "id": 311,
+              "name": "Jack Benjamin Evans"
+            },
+            {
+              "id": 312,
+              "name": "Emily Chloe Green"
+            },
+            {
+              "id": 315,
+              "name": "Leo Samuel Carter"
+            },
+            {
+              "id": 324,
+              "name": "Isabella Maria Parker"
             },
             {
               "id": 325,
@@ -7967,111 +8033,84 @@
               "name": "Samuel Daniel Rivera"
             },
             {
-              "id": 330,
-              "name": "Mia Scarlett Foster"
-            },
-            {
-              "id": 331,
-              "name": "Lucas Ryan Mitchell"
-            },
-            {
-              "id": 337,
-              "name": "Nathaniel John Ward"
+              "id": 338,
+              "name": "Abigail Rose Simmons"
             },
             {
               "id": 339,
               "name": "Carter Michael Campbell"
             },
             {
-              "id": 342,
-              "name": "Chloe Sophia Perez"
-            },
-            {
-              "id": 343,
-              "name": "Samuel Eli Hall"
-            },
-            {
               "id": 346,
               "name": "Ella Grace Richardson"
+            },
+            {
+              "id": 375,
+              "name": "Olivia Sophia Robinson"
             }
           ],
           "group": 1,
-          "is_parallel": true,
-          "parallel_group_id": "S53_B2_577340"
-        },
-        {
-          "id": "S53_B2_577340_G2",
-          "subject_id": 53,
-          "subject_name": "Dizains un tehnolo\u0123ijas II",
-          "teachers": [],
-          "students": [
-            {
-              "id": 347,
-              "name": "Liam Mason Bennett"
-            },
-            {
-              "id": 350,
-              "name": "Jacob Lucas Harris"
-            },
-            {
-              "id": 351,
-              "name": "Charlotte Kate Roberts"
-            },
-            {
-              "id": 354,
-              "name": "William Jacob Parker"
-            },
-            {
-              "id": 355,
-              "name": "Lily Grace Rodriguez"
-            },
-            {
-              "id": 362,
-              "name": "Noah Elias Jenkins"
-            },
-            {
-              "id": 364,
-              "name": "Matthew Elijah Thomas"
-            },
-            {
-              "id": 365,
-              "name": "Ava Elizabeth Bailey"
-            },
-            {
-              "id": 366,
-              "name": "Jameson Luke Harris"
-            },
-            {
-              "id": 369,
-              "name": "Grace Abigail Williams"
-            },
-            {
-              "id": 370,
-              "name": "Liam Nathaniel Hayes"
-            },
-            {
-              "id": 371,
-              "name": "Emily Anne Green"
-            },
-            {
-              "id": 372,
-              "name": "Aiden James White"
-            }
-          ],
-          "group": 2,
-          "is_parallel": true,
-          "parallel_group_id": "S53_B2_577340"
+          "is_parallel": false,
+          "parallel_group_id": null
         }
       ],
       "7": [
         {
-          "id": "S53_B2_577340_G1",
-          "subject_id": 53,
-          "subject_name": "Dizains un tehnolo\u0123ijas II",
+          "id": "S79_B2_987130",
+          "subject_id": 79,
+          "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 45,
-              "name": "Anna Elizabete Kaspersone"
+              "id": 42,
+              "name": "Marta  Brit\u0101la"
+            }
+          ],
+          "students": [
+            {
+              "id": 314,
+              "name": "Abigail Marie Sanchez"
+            },
+            {
+              "id": 323,
+              "name": "Ethan James Harris"
+            },
+            {
+              "id": 333,
+              "name": "James Lucas Harris"
+            },
+            {
+              "id": 336,
+              "name": "Grace Ella Howard"
+            },
+            {
+              "id": 349,
+              "name": "Harper Grace Simmons"
+            },
+            {
+              "id": 358,
+              "name": "Lucas Oliver Nelson"
+            },
+            {
+              "id": 360,
+              "name": "Leo Alexander Ward"
+            },
+            {
+              "id": 374,
+              "name": "Mason Riley Thompson"
+            }
+          ],
+          "group": 1,
+          "is_parallel": false,
+          "parallel_group_id": null
+        },
+        {
+          "id": "S76_B2_185848",
+          "subject_id": 76,
+          "subject_name": "Latvie\u0161u valoda II",
+          "teachers": [
+            {
+              "id": 47,
+              "name": "Krist\u012bne  Sevele"
             }
           ],
           "students": [
@@ -8080,16 +8119,52 @@
               "name": "John Michael Smith"
             },
             {
+              "id": 292,
+              "name": "Olivia Grace Taylor"
+            },
+            {
+              "id": 294,
+              "name": "Isabella Lily Clark"
+            },
+            {
+              "id": 295,
+              "name": "Benjamin Alexander Lewis"
+            },
+            {
               "id": 296,
               "name": "Mia Elizabeth Young"
             },
             {
-              "id": 305,
-              "name": "Matthew Ryan Carter"
+              "id": 299,
+              "name": "Samuel Jacob Robinson"
+            },
+            {
+              "id": 301,
+              "name": "Mason William King"
+            },
+            {
+              "id": 302,
+              "name": "Ella Abigail Scott"
             },
             {
               "id": 309,
               "name": "Elijah Noah Cooper"
+            },
+            {
+              "id": 311,
+              "name": "Jack Benjamin Evans"
+            },
+            {
+              "id": 312,
+              "name": "Emily Chloe Green"
+            },
+            {
+              "id": 315,
+              "name": "Leo Samuel Carter"
+            },
+            {
+              "id": 324,
+              "name": "Isabella Maria Parker"
             },
             {
               "id": 325,
@@ -8100,100 +8175,25 @@
               "name": "Samuel Daniel Rivera"
             },
             {
-              "id": 330,
-              "name": "Mia Scarlett Foster"
-            },
-            {
-              "id": 331,
-              "name": "Lucas Ryan Mitchell"
-            },
-            {
-              "id": 337,
-              "name": "Nathaniel John Ward"
+              "id": 338,
+              "name": "Abigail Rose Simmons"
             },
             {
               "id": 339,
               "name": "Carter Michael Campbell"
             },
             {
-              "id": 342,
-              "name": "Chloe Sophia Perez"
-            },
-            {
-              "id": 343,
-              "name": "Samuel Eli Hall"
-            },
-            {
               "id": 346,
               "name": "Ella Grace Richardson"
+            },
+            {
+              "id": 375,
+              "name": "Olivia Sophia Robinson"
             }
           ],
           "group": 1,
-          "is_parallel": true,
-          "parallel_group_id": "S53_B2_577340"
-        },
-        {
-          "id": "S53_B2_577340_G2",
-          "subject_id": 53,
-          "subject_name": "Dizains un tehnolo\u0123ijas II",
-          "teachers": [],
-          "students": [
-            {
-              "id": 347,
-              "name": "Liam Mason Bennett"
-            },
-            {
-              "id": 350,
-              "name": "Jacob Lucas Harris"
-            },
-            {
-              "id": 351,
-              "name": "Charlotte Kate Roberts"
-            },
-            {
-              "id": 354,
-              "name": "William Jacob Parker"
-            },
-            {
-              "id": 355,
-              "name": "Lily Grace Rodriguez"
-            },
-            {
-              "id": 362,
-              "name": "Noah Elias Jenkins"
-            },
-            {
-              "id": 364,
-              "name": "Matthew Elijah Thomas"
-            },
-            {
-              "id": 365,
-              "name": "Ava Elizabeth Bailey"
-            },
-            {
-              "id": 366,
-              "name": "Jameson Luke Harris"
-            },
-            {
-              "id": 369,
-              "name": "Grace Abigail Williams"
-            },
-            {
-              "id": 370,
-              "name": "Liam Nathaniel Hayes"
-            },
-            {
-              "id": 371,
-              "name": "Emily Anne Green"
-            },
-            {
-              "id": 372,
-              "name": "Aiden James White"
-            }
-          ],
-          "group": 2,
-          "is_parallel": true,
-          "parallel_group_id": "S53_B2_577340"
+          "is_parallel": false,
+          "parallel_group_id": null
         }
       ]
     }

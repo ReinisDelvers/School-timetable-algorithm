@@ -358,14 +358,9 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
 
     return sessions
 
-def create_single_session(sid, teachers_list, hour, students, teachers_dict, maxpd, minpd, hour_blocker, subjects_dict, parallel_group=None):
-    """
-    Create a single 1-hour session dict for subject `sid`.
-    Each session requires:
-      - `max_per_day` (maxpd)
-      - `min_per_day` (minpd)
-      - `candidates`: all (day,period) where the assigned teacher(s) are available and not blocked.
-    """
+def create_single_session(sid, teachers_list, hour, students, teachers_dict,
+                          maxpd, minpd, hour_blocker, subjects_dict,
+                          parallel_group=None):
     session = {
         'id': f"S{sid}_H{hour}",
         'subject': sid,
@@ -381,27 +376,33 @@ def create_single_session(sid, teachers_list, hour, students, teachers_dict, max
         'hour': hour
     }
 
-    # Build candidate slots (1-hour each). hour_blocker == 1 means free.
     for di, day in enumerate(DAYS):
-        # Check availability for every teacher in teachers_list
+        # must be available that day
         if not all(teachers_dict[tid][4 + di] for tid in teachers_list):
             continue
+
         for p in range(PERIODS_PER_DAY):
-            if hour_blocker[day][p] == 1:
-                session['candidates'].append(di * PERIODS_PER_DAY + p)
+            # global blocker
+            if hour_blocker[day][p] != 1:
+                continue
+
+            # half-day blocker  
+            half_index = 8 + di if p < PERIODS_PER_DAY//2 else 12 + di
+            if any(teachers_dict[tid][half_index] == 1 for tid in teachers_list):
+                continue
+
+            session['candidates'].append(di * PERIODS_PER_DAY + p)
 
     if not session['candidates']:
         logger.error(f"Session {session['id']} (Subject {sid}) has NO CANDIDATES.")
     return session
 
-def create_block_session(sid, teachers_list, students, teachers_dict, block_size, hour_blocker, subjects_dict, parallel_group=None):
-    """
-    Create a block session of size `block_size` hours for subject `sid`.
-    The session must occupy `block_size` consecutive periods on the same day.
-    We store candidate 'start-slot' indices that guarantee contiguity.
-    """
+
+def create_block_session(sid, teachers_list, students, teachers_dict,
+                         block_size, hour_blocker, subjects_dict,
+                         parallel_group=None):
     session = {
-        'id': f"S{sid}_B{block_size}_{random.randint(0,1_000_000)}",  # unique ID
+        'id': f"S{sid}_B{block_size}_{random.randint(0,1_000_000)}",
         'subject': sid,
         'teachers': teachers_list,
         'group': 1,
@@ -414,17 +415,25 @@ def create_block_session(sid, teachers_list, students, teachers_dict, block_size
         'block_size': block_size
     }
 
-    # Build candidate start slots where all block_size consecutive periods are free & teacher is available
     for di, day in enumerate(DAYS):
-        # Check availability for every teacher in teachers_list
+        # must be available that day
         if not all(teachers_dict[tid][4 + di] for tid in teachers_list):
             continue
+
         for p in range(PERIODS_PER_DAY - block_size + 1):
             can_place = True
             for offset in range(block_size):
+                # global blocker
                 if hour_blocker[day][p + offset] != 1:
                     can_place = False
                     break
+
+                # half-day blocker
+                half_index = 8 + di if (p + offset) < PERIODS_PER_DAY//2 else 12 + di
+                if any(teachers_dict[tid][half_index] == 1 for tid in teachers_list):
+                    can_place = False
+                    break
+
             if can_place:
                 session['candidates'].append(di * PERIODS_PER_DAY + p)
 
@@ -432,7 +441,9 @@ def create_block_session(sid, teachers_list, students, teachers_dict, block_size
         logger.error(f"Block session {session['id']} (Subject {sid}, size={block_size}) has NO CANDIDATES.")
     return session
 
-# --- Evaluation Function (modified to penalize idle gaps) ---
+
+
+# --- Evaluation Function (penalizes idle gaps) ---
 def evaluate_schedule(schedule, all_sessions, subjects):
     """
     Compute a numeric score of `schedule`. Lower is better.
@@ -448,8 +459,7 @@ def evaluate_schedule(schedule, all_sessions, subjects):
 
     score = 0
     scheduled_count = defaultdict(int)
-    student_schedule = defaultdict(lambda: defaultdict(list))  
-    # store a list of periods per day for each student
+    student_schedule = defaultdict(lambda: defaultdict(list))
     student_daily_hours = defaultdict(lambda: defaultdict(int))
     subject_daily_hours = defaultdict(lambda: defaultdict(int))
     teacher_daily_slots = defaultdict(lambda: defaultdict(set))
@@ -528,15 +538,11 @@ def evaluate_schedule(schedule, all_sessions, subjects):
             score += 20000 * abs(actual - required)
 
     # --- Idle‐time / gap penalty ---
-    # For each student, for each day:
-    #   Sort their occupied periods → if they have at least 2 periods,
-    #   then count the empty gaps between the earliest and latest.
     for student, daily in student_schedule.items():
         for d, periods in daily.items():
             if len(periods) <= 1:
                 continue
             sorted_periods = sorted(periods)
-            # Count gaps between consecutive periods:
             for i in range(len(sorted_periods)-1):
                 gap = sorted_periods[i+1] - sorted_periods[i] - 1
                 if gap > 0:
@@ -544,13 +550,12 @@ def evaluate_schedule(schedule, all_sessions, subjects):
 
     return score
 
-# --- Greedy Initial Construction (modified to bias clustering) ---
+# --- Greedy Initial Construction (now gap-aware) ---
 def greedy_initial(sessions, subjects):
     """
     Build a starting schedule by placing sessions one‐by‐one greedily,
     respecting teacher availability, student overlaps, and subject maxpd.
-    Now also biases towards minimizing idle gaps by preferring slots
-    close to other sessions a student has that same day.
+    Now also prioritizes minimizing empty gaps between classes for students.
     """
     subject_requirements = defaultdict(int)
     for sess in sessions:
@@ -560,8 +565,6 @@ def greedy_initial(sessions, subjects):
     subject_daily = defaultdict(lambda: defaultdict(int))
     teacher_schedule = defaultdict(set)
     student_schedule = defaultdict(lambda: defaultdict(list))
-    # store a list of periods per day for each student
-
     schedule = {}  # (day,period) -> [session, ...]
 
     def session_priority(sess):
@@ -593,12 +596,13 @@ def greedy_initial(sessions, subjects):
 
     def slot_score(sess, sl):
         """
-        Return a tuple that ranks candidate slots:
+        Ranking tuple:
           1) prefer morning (period < 5)
-          2) prefer days with fewer total sessions already
-          3) prefer earlier in week
-          4) prefer earlier in day
-          5) prefer slots that minimize distance to existing student‐periods
+          2) prefer less‐busy days
+          3) earlier in week
+          4) earlier in day
+          5) student‐proximity (avg distance to existing)
+          6) gap-penalty (fewer new gaps)
         """
         day = sl // PERIODS_PER_DAY
         period = sl % PERIODS_PER_DAY
@@ -606,53 +610,58 @@ def greedy_initial(sessions, subjects):
         # (1) prefer morning
         morning_flag = (period >= 5)
 
-        # (2) prefer less‐busy days (sum of all sessions scheduled anywhere that day)
+        # (2) prefer less‐busy days
         occupied_count = sum(len(schedule.get((day, p), [])) for p in range(PERIODS_PER_DAY))
         busy_flag = (occupied_count > 0)
 
-        # (3) prefer earlier in week → smaller day is better
+        # (3) prefer earlier in week
         week_flag = -day
 
-        # (4) prefer earlier in day → smaller period is better
+        # (4) prefer earlier in day
         day_flag = -period
 
-        # (5) new: student‐proximity measure
+        # (5) student‐proximity measure
         total_dist = 0
         count = 0
         for stu in sess['students']:
             existing = student_schedule[stu][day]
             if not existing:
                 total_dist += PERIODS_PER_DAY
-                count += 1
             else:
-                dmin = min(abs(period - p0) for p0 in existing)
-                total_dist += dmin
-                count += 1
+                total_dist += min(abs(period - p0) for p0 in existing)
+            count += 1
         avg_dist = (total_dist / count) if count > 0 else PERIODS_PER_DAY
-
-        # invert so that smaller avg_dist → higher priority
         proximity_flag = -avg_dist
 
-        return (morning_flag, busy_flag, week_flag, day_flag, proximity_flag)
+        # (6) gap-penalty: how many new empty slots between first & last
+        gap_penalty = 0
+        for stu in sess['students']:
+            existing = sorted(student_schedule[stu][day])
+            if not existing:
+                continue
+            old_gaps = sum(existing[i+1] - existing[i] - 1 for i in range(len(existing)-1))
+            new_list = sorted(existing + [period])
+            new_gaps = sum(new_list[i+1] - new_list[i] - 1 for i in range(len(new_list)-1))
+            gap_penalty += (new_gaps - old_gaps)
+        gap_flag = -gap_penalty
+
+        return (morning_flag, busy_flag, week_flag, day_flag, proximity_flag, gap_flag)
 
     def find_best_slot(sess):
         sid = sess['subject']
         maxpd = sess['max_per_day']
         bs = sess.get('block_size', 1)
-
         current_daily = dict(subject_daily[sid])
 
         for sl in sorted(sess['candidates'], key=lambda x: slot_score(sess, x)):
             day = sl // PERIODS_PER_DAY
             start_p = sl % PERIODS_PER_DAY
-
             if start_p + bs - 1 >= PERIODS_PER_DAY:
                 continue
 
             new_count = current_daily.get(day, 0) + bs
             if new_count > maxpd:
                 continue
-
             if has_teacher_conflict(sess, day, start_p):
                 continue
             if has_student_conflict(sess, day, start_p):
@@ -670,8 +679,7 @@ def greedy_initial(sessions, subjects):
         progress = False
         for sess in pending_sorted:
             sid = sess['subject']
-            already = subjects_scheduled[sid]
-            if already >= subject_requirements[sid]:
+            if subjects_scheduled[sid] >= subject_requirements[sid]:
                 continue
             slot = find_best_slot(sess)
             if slot is not None:
@@ -679,13 +687,13 @@ def greedy_initial(sessions, subjects):
                 start_p = slot % PERIODS_PER_DAY
                 bs = sess.get('block_size', 1)
 
-                # Place the session
+                # Place session
                 for offset in range(bs):
                     p = start_p + offset
                     schedule.setdefault((day, p), []).append(sess)
-                    slot_index = day * PERIODS_PER_DAY + p
+                    idx = day * PERIODS_PER_DAY + p
                     for tid in sess['teachers']:
-                        teacher_schedule[tid].add(slot_index)
+                        teacher_schedule[tid].add(idx)
                     for stu in sess['students']:
                         student_schedule[stu][day].append(p)
                     subject_daily[sid][day] += 1
@@ -697,71 +705,40 @@ def greedy_initial(sessions, subjects):
             break
 
     placed = sum(subjects_scheduled.values())
-    unplaced = []
-    for sess in sessions:
-        sid = sess['subject']
-        bs = sess.get('block_size', 1)
-        if subjects_scheduled[sid] < subject_requirements[sid]:
-            unplaced.append(sess['id'])
+    unplaced = [s['id'] for s in sessions if subjects_scheduled[s['subject']] < subject_requirements[s['subject']]]
     logger.info(f"greedy_initial placed {placed} of {total} hours; unplaced={unplaced}")
     return schedule
 
-# --- Solver with Simulated Annealing (plus improved fallback) ---
+# --- Solver with Simulated Annealing & Fallback (unchanged) ---
 def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200, stop_flag=None):
-    """
-    1) Run greedy_initial. If any subject still has missing hours, 
-       discard that subject’s block sessions and replace them with enough single-hour sessions to meet its full requirement.
-    2) Re-run greedy_initial on the new session list.
-    3) Use simulated annealing to refine from this guaranteed‐complete starting schedule.
-    """
     start_time = time.time()
     original_sessions = copy.deepcopy(sessions)
 
-    # 1a) First greedy pass
     current = greedy_initial(sessions, subjects)
     placed_counts = count_placed_hours(current)
-    missing_any = False
+    missing_any = any(placed_counts.get(sid,0) < subj[3] for sid, subj in subjects.items())
 
-    # Check for any subject missing hours
-    for sid, subj in subjects.items():
-        required = subj[3]
-        actual = placed_counts.get(sid, 0)
-        if actual < required:
-            missing_any = True
-            break
-
-    # 1b) If any subject is still short, replace *all* of that subject’s sessions with exactly `required` single-hour sessions
     if missing_any:
-        logger.info("Some subjects still missing hours after first greedy; applying fallback to break blocks into REQUIRED single-hour sessions")
+        logger.info("Fallback: breaking blocks into singles")
         sessions = fallback_replace_blocks_with_all_singles(
             original_sessions, current, subjects, teachers, hour_blocker
         )
-        # Re‐run greedy on the new session list
         current = greedy_initial(sessions, subjects)
 
-        placed_counts = count_placed_hours(current)
-        for sid, subj in subjects.items():
-            required = subj[3]
-            actual = placed_counts.get(sid, 0)
-            if actual < required:
-                logger.error(f"After fallback, subject {sid} STILL has {actual}/{required} hours!")
-            else:
-                logger.info(f"After fallback, subject {sid} has {actual}/{required} hours – OK")
-
-    # 1c) At this point, every subject should have its required hours placed
     current_score = evaluate_schedule(current, sessions, subjects)
     best_schedule = copy.deepcopy(current)
     best_score = current_score
-    logger.info(f"Initial score (after fallback if needed): {best_score}")
+    logger.info(f"Initial score: {best_score}")
 
-    # 2) Simulated annealing refinement
     temp = 1.0
     cooling_rate = 0.999
     min_temp = 0.001
     iteration = 0
     stall_count = 0
-    students_dict = {s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()}
-                     for s in get_student()}
+    students_dict = {
+        s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()}
+        for s in get_student()
+    }
 
     while temp > min_temp and (time.time() - start_time < time_limit):
         if stop_flag and stop_flag():
@@ -772,8 +749,7 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
         delta = neighbor_score - current_score
 
         if delta < 0 or random.random() < math.exp(-delta / temp):
-            current = neighbor
-            current_score = neighbor_score
+            current, current_score = neighbor, neighbor_score
             if current_score < best_score:
                 best_score = current_score
                 best_schedule = copy.deepcopy(current)
@@ -788,7 +764,7 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
             logger.info(f"Iter {iteration}, best_score={best_score}, temp={temp:.4f}, stall_count={stall_count}")
 
         if stall_count >= STALL_THRESHOLD:
-            logger.error("Solver stopped due to no improvement for 10,000 iterations.")
+            logger.error("No improvement for too long, stopping.")
             validate_final_schedule(best_schedule, sessions, subjects, teachers)
             break
 
@@ -797,73 +773,42 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
     return best_schedule, students_dict
 
 def count_placed_hours(schedule):
-    """
-    Count how many periods are occupied by each subject in `schedule`.
-    (Every slot covers 1 hour, whether part of a block or a single.)
-    """
     placed = defaultdict(int)
-    for (day, period), slot_sessions in schedule.items():
-        for sess in slot_sessions:
+    for (_, _), slot in schedule.items():
+        for sess in slot:
             placed[sess['subject']] += 1
     return placed
 
 def fallback_replace_blocks_with_all_singles(all_sessions, placed_schedule, subjects, teachers, hour_blocker):
-    """
-    For any subject that is missing hours, discard *all* of its original sessions and
-    create exactly `required` new single-hour sessions. This ensures the greedy pass can place
-    every hour. The new single-hour sessions are assigned round-robin to that subject’s teacher(s).
-    """
     placed_counts = count_placed_hours(placed_schedule)
-    missing_info = {}
-    for sid, subj in subjects.items():
-        required = subj[3]
-        actual = placed_counts.get(sid, 0)
-        if actual < required:
-            missing_info[sid] = required  # create exactly `required` singles
-
-    if not missing_info:
+    missing = {sid: subj[3] for sid, subj in subjects.items() if placed_counts.get(sid,0) < subj[3]}
+    if not missing:
         return all_sessions
 
-    # Build a fresh map of subject→list_of_teachers
     subject_teachers = defaultdict(list)
     for st in get_subject_teacher():
         s_id, t_id = st[1], st[3]
         subject_teachers[s_id].append(t_id)
 
-    # Remove all sessions for any subject in missing_info
-    new_sessions = [sess for sess in all_sessions if sess['subject'] not in missing_info]
-
-    # For each subject sid needing `required` single hours, create exactly `required` single-hour sessions
-    for sid, required_h in missing_info.items():
-        teacher_list = subject_teachers.get(sid, [])
-        if not teacher_list:
-            logger.error(f"No teacher found for subject {sid} in fallback!")
-            continue
-        all_students = next((sess['students'] for sess in all_sessions if sess['subject'] == sid), [])
+    new_sessions = [s for s in all_sessions if s['subject'] not in missing]
+    for sid, req in missing.items():
+        teachers_list = subject_teachers.get(sid,[])
+        all_students = next((s['students'] for s in all_sessions if s['subject']==sid),[])
         maxpd = subjects[sid][4]
-        minpd = 1  # single-hour
-        teacher_idx = 0
-        for h in range(required_h):
-            tid = teacher_list[teacher_idx % len(teacher_list)]
-            single_session = create_single_session(
-                sid=sid,
-                teachers_list=[tid],
-                hour=h,
-                students=all_students,
-                teachers_dict=teachers,
-                maxpd=maxpd,
-                minpd=minpd,
+        for h in range(req):
+            tid = teachers_list[h % len(teachers_list)]
+            single = create_single_session(
+                sid=sid, teachers_list=[tid], hour=h,
+                students=all_students, teachers_dict=teachers,
+                maxpd=maxpd, minpd=1,
                 hour_blocker=hour_blocker,
                 subjects_dict=subjects,
                 parallel_group=None
             )
-            new_sessions.append(single_session)
-            teacher_idx += 1
-
+            new_sessions.append(single)
     return new_sessions
 
 def generate_neighbor(schedule, subjects):
-    """Randomly pick one of the move heuristics to perturb the schedule."""
     moves = [
         move_session_to_empty_slot,
         swap_two_sessions,
@@ -871,20 +816,17 @@ def generate_neighbor(schedule, subjects):
         reorganize_day
     ]
     move = random.choice(moves)
-    new_schedule = copy.deepcopy(schedule)
-    return move(new_schedule, subjects)
+    return move(copy.deepcopy(schedule), subjects)
 
 def _compute_subject_daily(schedule, sid):
-    """Count how many sessions of subject `sid` per day in `schedule`."""
     counts = defaultdict(int)
-    for (day, period), sl in schedule.items():
+    for (d, p), sl in schedule.items():
         for sess in sl:
-            if sess['subject'] == sid:
-                counts[day] += 1
+            if sess['subject']==sid:
+                counts[d]+=1
     return counts
 
 def has_student_conflict(sess, key, schedule):
-    """Check if `sess` has any student conflict at slot `key` (for block_size=1 or more)."""
     if key not in schedule:
         return False
     sset = set(sess['students'])
@@ -893,384 +835,266 @@ def has_student_conflict(sess, key, schedule):
             return True
     return False
 
-# --- Move Heuristics ---
+# --- Move Heuristics (unchanged) ---
 def move_session_to_empty_slot(schedule, subjects):
-    """Move a random session (possibly a block) from a busy slot to a “lighter” slot."""
-    occupied_slots = list(schedule.keys())
-    if not occupied_slots:
+    occupied = list(schedule.keys())
+    if not occupied:
         return schedule
-
-    # Rebuild teacher_schedule from the current schedule
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
+    teacher_sched = defaultdict(set)
+    for (d,p), sl in schedule.items():
+        idx = d*PERIODS_PER_DAY + p
         for sess in sl:
             for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
+                teacher_sched[tid].add(idx)
 
-    # Build teacher loads per day
-    teacher_loads = defaultdict(lambda: defaultdict(int))
-    for (day, period), sessions in schedule.items():
-        for sess in sessions:
+    loads = defaultdict(lambda: defaultdict(int))
+    for (d,p), sl in schedule.items():
+        for sess in sl:
             for tid in sess['teachers']:
-                teacher_loads[tid][day] += 1
+                loads[tid][d]+=1
 
-    # Pick source slot with highest teacher‐load metric
     slot_scores = []
-    for slot in occupied_slots:
+    for slot in occupied:
         day = slot[0]
-        max_load = 0
+        max_load=0
         for sess in schedule[slot]:
             for tid in sess['teachers']:
-                max_load = max(max_load, teacher_loads[tid][day])
-        slot_scores.append((max_load, slot))
-    source_slot = max(slot_scores, key=lambda x: x[0])[1]
-
-    if source_slot not in schedule or not schedule[source_slot]:
+                max_load=max(max_load, loads[tid][day])
+        slot_scores.append((max_load,slot))
+    source = max(slot_scores,key=lambda x:x[0])[1]
+    if source not in schedule or not schedule[source]:
         return schedule
 
-    session = random.choice(schedule[source_slot])
-    sid = session['subject']
-    maxpd = session['max_per_day']
-    bs = session.get('block_size', 1)
+    session = random.choice(schedule[source])
+    sid=session['subject']
+    maxpd=session['max_per_day']
+    bs=session.get('block_size',1)
+    orig_daily=_compute_subject_daily(schedule,sid)
 
-    orig_daily = _compute_subject_daily(schedule, sid)
+    target=[]
+    for d in range(4):
+        for p in range(PERIODS_PER_DAY-bs+1):
+            if (d,p)==source: continue
+            if len(schedule.get((d,p),[])) < len(schedule[source]):
+                day_load=sum(loads[tid][d] for sess2 in schedule.get((d,p),[]) for tid in sess2['teachers'])
+                target.append((day_load,(d,p)))
 
-    # Candidate target starts: any start where fewer sessions than source slot
-    target_slots = []
-    for day in range(4):
-        for p in range(PERIODS_PER_DAY - bs + 1):
-            if (day, p) == source_slot:
-                continue
-            count_here = len(schedule.get((day, p), []))
-            count_source = len(schedule[source_slot])
-            if count_here < count_source:
-                day_load = sum(
-                    teacher_loads[tid][day]
-                    for sess2 in schedule.get((day, p), []) for tid in sess2['teachers']
-                )
-                target_slots.append((day_load, (day, p)))
-
-    if not target_slots:
+    if not target:
         return schedule
 
-    def ts_score(x):
-        load, (day, period) = x
-        return (load, day, period, len(schedule.get((day, period), [])))
+    target.sort(key=lambda x:(x[0],x[1][0],x[1][1],len(schedule.get(x[1],[]))))
+    for _,(nd,np) in target:
+        if np+bs-1>=PERIODS_PER_DAY: continue
+        newd=orig_daily.copy()
+        oldd=source[0]
+        newd[oldd]-=bs; newd[nd]+=bs
+        if newd[nd]>maxpd: continue
 
-    target_slots.sort(key=ts_score)
-    for _, (new_day, new_p) in target_slots:
-        # Ensure block fits
-        if new_p + bs - 1 >= PERIODS_PER_DAY:
-            continue
-
-        new_daily = orig_daily.copy()
-        old_day = source_slot[0]
-        new_daily[old_day] -= bs
-        new_daily[new_day] += bs
-
-        # Check subject daily maxpd
-        if new_daily[new_day] > maxpd:
-            continue
-
-        # Teacher conflict?
-        conflict = False
-        for offset in range(bs):
-            target_index = new_day * PERIODS_PER_DAY + (new_p + offset)
+        conflict=False
+        for off in range(bs):
+            idx=nd*PERIODS_PER_DAY+(np+off)
             for tid in session['teachers']:
-                if target_index in teacher_schedule[tid]:
-                    conflict = True
-                    break
-            if conflict:
-                break
-        if conflict:
-            continue
+                if idx in teacher_sched[tid]:
+                    conflict=True; break
+            if conflict: break
+        if conflict: continue
 
-        # Student conflict?
-        conflict = False
-        for offset in range(bs):
-            if has_student_conflict(session, (new_day, new_p + offset), schedule):
-                conflict = True
-                break
-        if conflict:
-            continue
+        for off in range(bs):
+            if has_student_conflict(session,(nd,np+off),schedule):
+                conflict=True; break
+        if conflict: continue
 
-        # Commit move:
-        # First find exactly which slots currently contain `session`
-        old_slots = [key for key, lst in schedule.items() if session in lst]
-
-        # Remove `session` from each old slot
-        for old_slot in old_slots:
-            schedule[old_slot].remove(session)
-            if not schedule[old_slot]:
-                del schedule[old_slot]
-
-        # Add `session` to each new slot
-        for offset in range(bs):
-            new_slot = (new_day, new_p + offset)
-            schedule.setdefault(new_slot, []).append(session)
-
+        old_slots=[k for k,v in schedule.items() if session in v]
+        for os in old_slots:
+            schedule[os].remove(session)
+            if not schedule[os]: del schedule[os]
+        for off in range(bs):
+            slot=(nd,np+off)
+            schedule.setdefault(slot,[]).append(session)
         return schedule
 
     return schedule
 
 def swap_two_sessions(schedule, subjects):
-    """Swap two randomly picked sessions (possibly blocks) between different slots."""
-    occupied_slots = list(schedule.keys())
-    if len(occupied_slots) < 2:
-        return schedule
-
-    # Rebuild teacher_schedule from the current schedule
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
+    occupied=list(schedule.keys())
+    if len(occupied)<2: return schedule
+    teacher_sched=defaultdict(set)
+    for (d,p),sl in schedule.items():
+        idx=d*PERIODS_PER_DAY+p
         for sess in sl:
             for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
+                teacher_sched[tid].add(idx)
 
-    slot1, slot2 = random.sample(occupied_slots, 2)
-    if not schedule[slot1] or not schedule[slot2]:
-        return schedule
+    s1,s2=random.sample(occupied,2)
+    if not schedule[s1] or not schedule[s2]: return schedule
 
-    sess1 = random.choice(schedule[slot1])
-    sess2 = random.choice(schedule[slot2])
-    sid1, sid2 = sess1['subject'], sess2['subject']
-    maxpd1 = sess1['max_per_day']
-    maxpd2 = sess2['max_per_day']
-    bs1 = sess1.get('block_size', 1)
-    bs2 = sess2.get('block_size', 1)
+    sess1=random.choice(schedule[s1])
+    sess2=random.choice(schedule[s2])
+    sid1,sid2=sess1['subject'],sess2['subject']
+    maxpd1,maxpd2=sess1['max_per_day'],sess2['max_per_day']
+    bs1,bs2=sess1.get('block_size',1),sess2.get('block_size',1)
+    d1,p1=s1; d2,p2=s2
 
-    old_day1, old_p1 = slot1[0], slot1[1]
-    old_day2, old_p2 = slot2[0], slot2[1]
-    daily1 = _compute_subject_daily(schedule, sid1)
-    daily2 = _compute_subject_daily(schedule, sid2)
+    daily1,_daily2 = _compute_subject_daily(schedule,sid1),_compute_subject_daily(schedule,sid2)
+    nd1=daily1.copy(); nd2=_daily2.copy()
+    nd1[d1]-=bs1; nd1[d2]+=bs1
+    nd2[d2]-=bs2; nd2[d1]+=bs2
+    if nd1[d2]>maxpd1 or nd2[d1]>maxpd2: return schedule
 
-    new_daily1 = daily1.copy()
-    new_daily1[old_day1] -= bs1
-    new_daily1[old_day2] += bs1
-    new_daily2 = daily2.copy()
-    new_daily2[old_day2] -= bs2
-    new_daily2[old_day1] += bs2
-
-    if new_daily1[old_day2] > maxpd1 or new_daily2[old_day1] > maxpd2:
-        return schedule
-
-    # Teacher conflict?
-    conflict = False
-    for offset in range(bs1):
-        slot2_index = old_day2 * PERIODS_PER_DAY + (old_p2 + offset)
+    # teacher conflict
+    for off in range(bs1):
+        idx2=d2*PERIODS_PER_DAY+(p2+off)
         for tid in sess1['teachers']:
-            if slot2_index in teacher_schedule[tid] and (old_day2, old_p2 + offset) != slot1:
-                conflict = True
-                break
-        if conflict:
-            break
-    if not conflict:
-        for offset in range(bs2):
-            slot1_index = old_day1 * PERIODS_PER_DAY + (old_p1 + offset)
-            for tid in sess2['teachers']:
-                if slot1_index in teacher_schedule[tid] and (old_day1, old_p1 + offset) != slot2:
-                    conflict = True
-                    break
-            if conflict:
-                break
-    if conflict:
-        return schedule
+            if idx2 in teacher_sched[tid] and (d2,p2+off)!=s1:
+                return schedule
+    for off in range(bs2):
+        idx1=d1*PERIODS_PER_DAY+(p1+off)
+        for tid in sess2['teachers']:
+            if idx1 in teacher_sched[tid] and (d1,p1+off)!=s2:
+                return schedule
 
-    # Student conflicts?
-    for offset in range(bs1):
-        if has_student_conflict(sess1, (old_day2, old_p2 + offset), schedule):
-            return schedule
-    for offset in range(bs2):
-        if has_student_conflict(sess2, (old_day1, old_p1 + offset), schedule):
-            return schedule
+    # student conflict
+    for off in range(bs1):
+        if has_student_conflict(sess1,(d2,p2+off),schedule): return schedule
+    for off in range(bs2):
+        if has_student_conflict(sess2,(d1,p1+off),schedule): return schedule
 
-    # Commit swap:
-    old_slots_1 = [key for key, lst in schedule.items() if sess1 in lst]
-    old_slots_2 = [key for key, lst in schedule.items() if sess2 in lst]
-
-    for old_slot in old_slots_1:
-        schedule[old_slot].remove(sess1)
-        if not schedule[old_slot]:
-            del schedule[old_slot]
-    for old_slot in old_slots_2:
-        schedule[old_slot].remove(sess2)
-        if not schedule[old_slot]:
-            del schedule[old_slot]
-
-    for old_slot in old_slots_2:
-        schedule.setdefault(old_slot, []).append(sess1)
-    for old_slot in old_slots_1:
-        schedule.setdefault(old_slot, []).append(sess2)
-
+    old1=[k for k,v in schedule.items() if sess1 in v]
+    old2=[k for k,v in schedule.items() if sess2 in v]
+    for o in old1:
+        schedule[o].remove(sess1)
+        if not schedule[o]: del schedule[o]
+    for o in old2:
+        schedule[o].remove(sess2)
+        if not schedule[o]: del schedule[o]
+    for o in old2:
+        schedule.setdefault(o,[]).append(sess1)
+    for o in old1:
+        schedule.setdefault(o,[]).append(sess2)
     return schedule
 
 def move_parallel_group(schedule, subjects):
-    """
-    Move all sessions of a parallel group together to a random slot,
-    respecting subject daily constraints and teacher/student conflicts.
-    """
-    teacher_schedule = defaultdict(set)
-    for (d, p), sl in schedule.items():
-        slot_index = d * PERIODS_PER_DAY + p
+    teacher_sched=defaultdict(set)
+    for (d,p),sl in schedule.items():
+        idx=d*PERIODS_PER_DAY+p
         for sess in sl:
             for tid in sess['teachers']:
-                teacher_schedule[tid].add(slot_index)
+                teacher_sched[tid].add(idx)
 
-    parallel_groups = defaultdict(list)
-    for slot, sl in schedule.items():
+    parallel_groups=defaultdict(list)
+    for slot,sl in schedule.items():
         for sess in sl:
             if sess.get('is_parallel'):
-                parallel_groups[sess['parallel_with']].append((slot, sess))
-
+                parallel_groups[sess['parallel_with']].append((slot,sess))
     if not parallel_groups:
         return schedule
 
-    group_id = random.choice(list(parallel_groups.keys()))
-    group_sessions = parallel_groups[group_id]
+    group_id=random.choice(list(parallel_groups.keys()))
+    group_sessions=parallel_groups[group_id]
+    target_day=random.randint(0,3)
+    max_block=max(sess.get('block_size',1) for _,sess in group_sessions)
+    target_p=random.randint(0,PERIODS_PER_DAY-max_block)
 
-    target_day = random.randint(0, 3)
-    max_block = max(sess.get('block_size', 1) for _, sess in group_sessions)
-    target_p = random.randint(0, PERIODS_PER_DAY - max_block)
-    target_slot = (target_day, target_p)
+    daily_counts={}
+    for _,sess in group_sessions:
+        sid=sess['subject']
+        daily_counts[sid]=_compute_subject_daily(schedule,sid)
 
-    daily_counts = {}
-    for _, sess in group_sessions:
-        sid = sess['subject']
-        if sid not in daily_counts:
-            daily_counts[sid] = _compute_subject_daily(schedule, sid)
+    for old_slot,sess in group_sessions:
+        sid=sess['subject']
+        maxpd=sess['max_per_day']
+        bs=sess.get('block_size',1)
+        old_day=old_slot[0]
+        new_daily=daily_counts[sid].copy()
+        new_daily[old_day]-=bs; new_daily[target_day]+=bs
+        if new_daily[target_day]>maxpd: return schedule
 
-    for old_slot, sess in group_sessions:
-        sid = sess['subject']
-        maxpd = sess['max_per_day']
-        bs = sess.get('block_size', 1)
-
-        old_day = old_slot[0]
-        new_daily = daily_counts[sid].copy()
-        new_daily[old_day] -= bs
-        new_daily[target_day] += bs
-
-        if new_daily[target_day] > maxpd:
-            return schedule
-
-        for offset in range(bs):
-            target_index = target_day * PERIODS_PER_DAY + (target_p + offset)
+        for off in range(bs):
+            idx=target_day*PERIODS_PER_DAY+(target_p+off)
             for tid in sess['teachers']:
-                if target_index in teacher_schedule[tid]:
-                    return schedule
-
-        for offset in range(bs):
-            if has_student_conflict(sess, (target_day, target_p + offset), schedule):
+                if idx in teacher_sched[tid]: return schedule
+        for off in range(bs):
+            if has_student_conflict(sess,(target_day,target_p+off),schedule):
                 return schedule
 
-    # Commit moves
-    for old_slot, sess in group_sessions:
-        old_slots = [key for key, lst in schedule.items() if sess in lst]
-        for s_ in old_slots:
-            schedule[s_].remove(sess)
-            if not schedule[s_]:
-                del schedule[s_]
-
-    for _, sess in group_sessions:
-        bs = sess.get('block_size', 1)
-        for offset in range(bs):
-            new_slot = (target_day, target_p + offset)
-            schedule.setdefault(new_slot, []).append(sess)
-
+    # commit
+    for old_slot,sess in group_sessions:
+        olds=[k for k,v in schedule.items() if sess in v]
+        for o in olds:
+            schedule[o].remove(sess)
+            if not schedule[o]: del schedule[o]
+    for _,sess in group_sessions:
+        bs=sess.get('block_size',1)
+        for off in range(bs):
+            slot=(target_day,target_p+off)
+            schedule.setdefault(slot,[]).append(sess)
     return schedule
 
 def reorganize_day(schedule, subjects):
-    """
-    For a random day, collect all sessions (including block sessions expanded into individual periods)
-    and reassign them to the earliest possible periods, attempting to maximize valid parallelization
-    (no student overlap). Block sessions remain intact during this process because their 'block_size'
-    ensures they stay together.
-    """
-    day = random.randint(0, 3)
-
-    original_entries = []
-    for period in range(PERIODS_PER_DAY):
-        slot = (day, period)
+    day=random.randint(0,3)
+    original=[]
+    for p in range(PERIODS_PER_DAY):
+        slot=(day,p)
         if slot in schedule:
             for sess in schedule[slot]:
-                original_entries.append((period, sess))
+                original.append((p,sess))
             del schedule[slot]
-
-    if not original_entries:
+    if not original:
         return schedule
 
-    day_sessions = []
-    seen_ids = set()
-    for (_, sess) in original_entries:
-        if sess['id'] not in seen_ids:
-            seen_ids.add(sess['id'])
+    day_sessions=[]; seen=set()
+    for _,sess in original:
+        if sess['id'] not in seen:
+            seen.add(sess['id'])
             day_sessions.append(sess)
 
-    def parallel_potential(sess):
-        return (len(sess['students']), sess['subject'])
-
-    day_sessions.sort(key=parallel_potential)
-
-    placed_slots = {}  # (day, period) -> [session, ...]
-    period_idx = 0
-
-    while day_sessions and period_idx < PERIODS_PER_DAY:
-        to_remove = []
+    day_sessions.sort(key=lambda s:(len(s['students']),s['subject']))
+    placed={}
+    idx=0
+    while day_sessions and idx<PERIODS_PER_DAY:
+        torem=[]
         for sess in list(day_sessions):
-            bs = sess.get('block_size', 1)
-            if period_idx + bs - 1 >= PERIODS_PER_DAY:
-                continue
-            can_add = True
-            for offset in range(bs):
-                for other in placed_slots.get((day, period_idx), []):
-                    if set(sess['students']) & set(other['students']):
-                        can_add = False
-                        break
-                if not can_add:
-                    break
-            if can_add:
-                for offset in range(bs):
-                    placed_slots.setdefault((day, period_idx + offset), []).append(sess)
-                to_remove.append(sess)
-
-        if to_remove:
-            max_bs = max(sess.get('block_size', 1) for sess in to_remove)
-            period_idx += max_bs
-            for sess in to_remove:
-                day_sessions.remove(sess)
+            bs=sess.get('block_size',1)
+            if idx+bs-1>=PERIODS_PER_DAY: continue
+            ok=True
+            for off in range(bs):
+                for other in placed.get((day,idx),[]):
+                    if set(sess['students'])&set(other['students']):
+                        ok=False; break
+                if not ok: break
+            if ok:
+                for off in range(bs):
+                    placed.setdefault((day,idx+off),[]).append(sess)
+                torem.append(sess)
+        if torem:
+            idx+=max(s.get('block_size',1) for s in torem)
+            for s in torem:
+                day_sessions.remove(s)
         else:
-            period_idx += 1
+            idx+=1
 
-    for slot, sess_list in placed_slots.items():
-        schedule[slot] = sess_list
+    for slot,sl in placed.items():
+        schedule[slot]=sl
 
     if day_sessions:
-        original_map = defaultdict(list)
-        for pr, sess in original_entries:
-            original_map[sess['id']].append(pr)
-
+        orig_map=defaultdict(list)
+        for p,sess in original:
+            orig_map[sess['id']].append(p)
         for sess in day_sessions:
-            bs = sess.get('block_size', 1)
-            orig_periods = sorted(original_map[sess['id']])
-            placed = False
-            for start_p in orig_periods:
-                if start_p + bs - 1 < PERIODS_PER_DAY:
-                    can_place = True
-                    for offset in range(bs):
-                        if has_student_conflict(sess, (day, start_p + offset), schedule):
-                            can_place = False
-                            break
-                    if can_place:
-                        for offset in range(bs):
-                            slot_ = (day, start_p + offset)
-                            schedule.setdefault(slot_, []).append(sess)
-                        placed = True
+            bs=sess.get('block_size',1)
+            for start in orig_map[sess['id']]:
+                if start+bs-1<PERIODS_PER_DAY:
+                    ok=True
+                    for off in range(bs):
+                        if has_student_conflict(sess,(day,start+off),schedule):
+                            ok=False; break
+                    if ok:
+                        for off in range(bs):
+                            schedule.setdefault((day,start+off),[]).append(sess)
                         break
-            if not placed:
-                start_p = orig_periods[0]
-                for offset in range(bs):
-                    slot_ = (day, start_p + offset)
-                    schedule.setdefault(slot_, []).append(sess)
+            else:
+                for off in range(bs):
+                    schedule.setdefault((day,orig_map[sess['id']][0]+off),[]).append(sess)
 
     return schedule
 
@@ -1304,7 +1128,6 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
             day_str = str(day)
             period_str = str(period)
 
-            # 1) If this session was flagged “is_parallel == True”, split it:
             if sess.get('is_parallel'):
                 required_groups = subj_info['group_count']
                 student_count   = len(sess['students'])
@@ -1317,7 +1140,6 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
                     groups.append([])
 
                 for gi, grp in enumerate(groups):
-                    # pick teacher i if available, else None
                     if gi < len(sess['teachers']):
                         chosen_tid = sess['teachers'][gi]
                     else:
@@ -1364,15 +1186,6 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
     return formatted
 
 def validate_final_schedule(schedule, sessions, subjects, teachers):
-    """
-    Detailed logging of any issues in `schedule`:
-      - Student conflicts (same slot).
-      - Teacher conflicts (same slot).
-      - Subject weekly totals vs required.
-      - Subject daily minpd/maxpd and contiguity.
-      - Teacher daily load.
-      - Student daily load.
-    """
     logger.info("\n=== Schedule Validation Results ===")
     stats = {
         'student_conflicts': 0,
@@ -1389,7 +1202,6 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
     for sid in subjects:
         stats['required_hours'][sid] = subjects[sid][3]
 
-    # Track slot usage
     for (day, period), slot_sessions in schedule.items():
         teachers_this_slot = defaultdict(list)
         students_this_slot = defaultdict(list)
@@ -1416,7 +1228,6 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
                 stats['student_conflict_details'].append((stu, day, period, sess_ids))
                 logger.error(f"Student conflict: Student {stu} has sessions {sess_ids} on {DAYS[day]} period {period}")
 
-    # Subject weekly totals and daily breakdown
     logger.info("\n--- Subject‐by‐Subject Hours Check ---")
     missing = []
     for sid, required in stats['required_hours'].items():
@@ -1458,27 +1269,22 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
     else:
         logger.info("\nAll subjects reached required weekly totals")
 
-    # Student conflicts summary
     logger.info(f"\n--- Total Student Conflicts: {stats['student_conflicts']} ---")
     for stu, day, period, sess_ids in stats['student_conflict_details']:
         logger.error(f" Student {stu} conflict at {DAYS[day]} period {period}: {sess_ids}")
 
-    # Teacher conflicts summary
     logger.info(f"\n--- Total Teacher Conflicts: {stats['teacher_conflicts']} ---")
     for tid, day, period, sess_ids in stats['teacher_conflict_details']:
         logger.error(f" Teacher {tid} conflict at {DAYS[day]} period {period}: {sess_ids}")
 
-    # Teacher daily loads
     logger.info("\n--- Teacher Daily Loads ---")
-    if teachers:
-        for tid, daily in stats['teacher_daily_load'].items():
-            name = f"{teachers[tid][1]} {teachers[tid][3]}"
-            logger.info(f"Teacher {tid} ({name}):")
-            for d in range(4):
-                load = daily.get(d, 0)
-                logger.info(f"   {DAYS[d].capitalize()}: {load} session{'s' if load != 1 else ''}")
+    for tid, daily in stats['teacher_daily_load'].items():
+        name = f"{teachers[tid][1]} {teachers[tid][3]}"
+        logger.info(f"Teacher {tid} ({name}):")
+        for d in range(4):
+            load = daily.get(d, 0)
+            logger.info(f"   {DAYS[d].capitalize()}: {load} session{'s' if load != 1 else ''}")
 
-    # Student maximum load per day
     logger.info("\n--- Maximum Student Load per Day ---")
     max_daily = defaultdict(int)
     for stu, daily in stats['student_daily_load'].items():
@@ -1488,7 +1294,6 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
         logger.info(f"  {DAYS[d].capitalize()}: {max_daily[d]} session{'s' if max_daily[d] != 1 else ''}")
 
     logger.info("\n=== End Detailed Validation ===\n")
-
     return stats
 
 # --- Main Execution ---
@@ -1496,7 +1301,6 @@ if __name__ == '__main__':
     teachers, subjects, students_raw, st_map, subj_students, hour_blocker, student_groups = load_data()
     sessions = build_sessions(teachers, subjects, st_map, subj_students, hour_blocker)
 
-    # Solve (now passing teachers and hour_blocker into solve_timetable)
     schedule, students_dict = solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200)
 
     if schedule:
