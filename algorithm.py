@@ -193,7 +193,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
         # ----------------------------------------------------------------
         # If subj[7] == 1 → “parallel scheduling” for this subject
         #   * Combine all teachers into one session
-        #   * Mark is_parallel = True, parallel_group = sid
+        #   * Mark is_parallel = True, parallel_with = sid
         # ----------------------------------------------------------------
         if subj[7] == 1:
             required_groups = subj[2]     # number of parallel groups
@@ -211,7 +211,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         sid=sid,
                         teachers_list=all_tids,
                         students=all_students,
-                        teacher_info=teachers[all_tids[0]],
+                        teachers_dict=teachers,
                         block_size=minpd,
                         hour_blocker=hour_blocker,
                         subjects_dict=subjects,
@@ -230,7 +230,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         teachers_list=all_tids,
                         hour=0,
                         students=all_students,
-                        teacher_info=teachers[all_tids[0]],
+                        teachers_dict=teachers,
                         maxpd=maxpd,
                         minpd=1,
                         hour_blocker=hour_blocker,
@@ -251,7 +251,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         teachers_list=all_tids,
                         hour=(hours_per_week - hours_remaining),
                         students=all_students,
-                        teacher_info=teachers[all_tids[0]],
+                        teachers_dict=teachers,
                         maxpd=maxpd,
                         minpd=minpd,
                         hour_blocker=hour_blocker,
@@ -292,7 +292,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     sid=sid,
                     teachers_list=[tid],
                     students=all_students,
-                    teacher_info=teachers[tid],
+                    teachers_dict=teachers,
                     block_size=minpd,
                     hour_blocker=hour_blocker,
                     subjects_dict=subjects,
@@ -309,7 +309,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     teachers_list=[tid],
                     hour=0,
                     students=all_students,
-                    teacher_info=teachers[tid],
+                    teachers_dict=teachers,
                     maxpd=maxpd,
                     minpd=1,
                     hour_blocker=hour_blocker,
@@ -328,7 +328,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     teachers_list=[tid],
                     hour=(hours_per_week - hours_remaining),
                     students=all_students,
-                    teacher_info=teachers[tid],
+                    teachers_dict=teachers,
                     maxpd=maxpd,
                     minpd=minpd,
                     hour_blocker=hour_blocker,
@@ -358,7 +358,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
 
     return sessions
 
-def create_single_session(sid, teachers_list, hour, students, teacher_info, maxpd, minpd, hour_blocker, subjects_dict, parallel_group=None):
+def create_single_session(sid, teachers_list, hour, students, teachers_dict, maxpd, minpd, hour_blocker, subjects_dict, parallel_group=None):
     """
     Create a single 1-hour session dict for subject `sid`.
     Each session requires:
@@ -384,7 +384,7 @@ def create_single_session(sid, teachers_list, hour, students, teacher_info, maxp
     # Build candidate slots (1-hour each). hour_blocker == 1 means free.
     for di, day in enumerate(DAYS):
         # Check availability for every teacher in teachers_list
-        if not all(teacher_info[4 + di] for _ in teachers_list):
+        if not all(teachers_dict[tid][4 + di] for tid in teachers_list):
             continue
         for p in range(PERIODS_PER_DAY):
             if hour_blocker[day][p] == 1:
@@ -394,7 +394,7 @@ def create_single_session(sid, teachers_list, hour, students, teacher_info, maxp
         logger.error(f"Session {session['id']} (Subject {sid}) has NO CANDIDATES.")
     return session
 
-def create_block_session(sid, teachers_list, students, teacher_info, block_size, hour_blocker, subjects_dict, parallel_group=None):
+def create_block_session(sid, teachers_list, students, teachers_dict, block_size, hour_blocker, subjects_dict, parallel_group=None):
     """
     Create a block session of size `block_size` hours for subject `sid`.
     The session must occupy `block_size` consecutive periods on the same day.
@@ -415,10 +415,9 @@ def create_block_session(sid, teachers_list, students, teacher_info, block_size,
     }
 
     # Build candidate start slots where all block_size consecutive periods are free & teacher is available
-    # hour_blocker == 1 means free
     for di, day in enumerate(DAYS):
         # Check availability for every teacher in teachers_list
-        if not all(teacher_info[4 + di] for _ in teachers_list):
+        if not all(teachers_dict[tid][4 + di] for tid in teachers_list):
             continue
         for p in range(PERIODS_PER_DAY - block_size + 1):
             can_place = True
@@ -840,7 +839,6 @@ def fallback_replace_blocks_with_all_singles(all_sessions, placed_schedule, subj
         if not teacher_list:
             logger.error(f"No teacher found for subject {sid} in fallback!")
             continue
-        # Get the student list from any existing session in all_sessions (if none, then empty)
         all_students = next((sess['students'] for sess in all_sessions if sess['subject'] == sid), [])
         maxpd = subjects[sid][4]
         minpd = 1  # single-hour
@@ -852,7 +850,7 @@ def fallback_replace_blocks_with_all_singles(all_sessions, placed_schedule, subj
                 teachers_list=[tid],
                 hour=h,
                 students=all_students,
-                teacher_info=teachers[tid],
+                teachers_dict=teachers,
                 maxpd=maxpd,
                 minpd=minpd,
                 hour_blocker=hour_blocker,

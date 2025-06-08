@@ -576,7 +576,7 @@
       ],
       "1": [
         {
-          "id": "S74_B2_760511_G1",
+          "id": "S74_B2_420976_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -681,10 +681,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_760511"
+          "parallel_group_id": "S74_B2_420976"
         },
         {
-          "id": "S74_B2_760511_G2",
+          "id": "S74_B2_420976_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -785,10 +785,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_760511"
+          "parallel_group_id": "S74_B2_420976"
         },
         {
-          "id": "S75_B2_997165",
+          "id": "S75_B2_107326",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
@@ -902,7 +902,7 @@
       ],
       "2": [
         {
-          "id": "S74_B2_760511_G1",
+          "id": "S74_B2_420976_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -1007,10 +1007,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_760511"
+          "parallel_group_id": "S74_B2_420976"
         },
         {
-          "id": "S74_B2_760511_G2",
+          "id": "S74_B2_420976_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -1111,10 +1111,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_760511"
+          "parallel_group_id": "S74_B2_420976"
         },
         {
-          "id": "S75_B2_997165",
+          "id": "S75_B2_107326",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
@@ -1482,7 +1482,7 @@
       ],
       "8": [
         {
-          "id": "S72_B2_682974",
+          "id": "S72_B2_771569",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
@@ -1606,7 +1606,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_689370_G1",
+          "id": "S53_B2_280214_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -1671,10 +1671,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_689370"
+          "parallel_group_id": "S53_B2_280214"
         },
         {
-          "id": "S53_B2_689370_G2",
+          "id": "S53_B2_280214_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1734,12 +1734,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_689370"
+          "parallel_group_id": "S53_B2_280214"
         }
       ],
       "9": [
         {
-          "id": "S72_B2_682974",
+          "id": "S72_B2_771569",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
@@ -1863,7 +1863,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_689370_G1",
+          "id": "S53_B2_280214_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -1928,10 +1928,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_689370"
+          "parallel_group_id": "S53_B2_280214"
         },
         {
-          "id": "S53_B2_689370_G2",
+          "id": "S53_B2_280214_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1991,12 +1991,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_689370"
+          "parallel_group_id": "S53_B2_280214"
         }
       ],
       "6": [
         {
-          "id": "S64_B2_408222",
+          "id": "S64_B2_785832",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -2100,7 +2100,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_525819",
+          "id": "S79_B2_249531",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -2150,7 +2150,7 @@
       ],
       "7": [
         {
-          "id": "S64_B2_408222",
+          "id": "S64_B2_785832",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -2254,7 +2254,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_525819",
+          "id": "S79_B2_249531",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -2850,7 +2850,7 @@
       ],
       "2": [
         {
-          "id": "S74_B2_67453_G1",
+          "id": "S74_B2_776973_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -2955,10 +2955,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_67453"
+          "parallel_group_id": "S74_B2_776973"
         },
         {
-          "id": "S74_B2_67453_G2",
+          "id": "S74_B2_776973_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3059,12 +3059,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_67453"
+          "parallel_group_id": "S74_B2_776973"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_67453_G1",
+          "id": "S74_B2_776973_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3169,10 +3169,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_67453"
+          "parallel_group_id": "S74_B2_776973"
         },
         {
-          "id": "S74_B2_67453_G2",
+          "id": "S74_B2_776973_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -3273,7 +3273,7 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_67453"
+          "parallel_group_id": "S74_B2_776973"
         },
         {
           "id": "S75_H0",
@@ -3390,7 +3390,7 @@
       ],
       "0": [
         {
-          "id": "S77_B2_164564",
+          "id": "S77_B2_478748",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -3562,7 +3562,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_451427",
+          "id": "S69_B2_71653",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
@@ -3588,7 +3588,7 @@
       ],
       "1": [
         {
-          "id": "S77_B2_164564",
+          "id": "S77_B2_478748",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -3760,7 +3760,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_451427",
+          "id": "S69_B2_71653",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
@@ -3786,7 +3786,7 @@
       ],
       "8": [
         {
-          "id": "S79_B2_619193",
+          "id": "S79_B2_678826",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -3836,7 +3836,7 @@
       ],
       "9": [
         {
-          "id": "S79_B2_619193",
+          "id": "S79_B2_678826",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
@@ -3886,7 +3886,7 @@
       ],
       "6": [
         {
-          "id": "S64_B2_879704",
+          "id": "S64_B2_669911",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -3992,7 +3992,7 @@
       ],
       "7": [
         {
-          "id": "S64_B2_879704",
+          "id": "S64_B2_669911",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -4278,7 +4278,7 @@
     "1": {
       "4": [
         {
-          "id": "S57_B2_352482_G1",
+          "id": "S57_B2_549208_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4347,10 +4347,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G2",
+          "id": "S57_B2_549208_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4419,10 +4419,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G3",
+          "id": "S57_B2_549208_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4491,10 +4491,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G4",
+          "id": "S57_B2_549208_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4551,12 +4551,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_352482_G1",
+          "id": "S57_B2_549208_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4625,10 +4625,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G2",
+          "id": "S57_B2_549208_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4697,10 +4697,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G3",
+          "id": "S57_B2_549208_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4769,10 +4769,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         },
         {
-          "id": "S57_B2_352482_G4",
+          "id": "S57_B2_549208_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -4829,12 +4829,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_352482"
+          "parallel_group_id": "S57_B2_549208"
         }
       ],
       "2": [
         {
-          "id": "S74_B2_156646_G1",
+          "id": "S74_B2_592862_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -4939,10 +4939,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_156646"
+          "parallel_group_id": "S74_B2_592862"
         },
         {
-          "id": "S74_B2_156646_G2",
+          "id": "S74_B2_592862_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5043,12 +5043,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_156646"
+          "parallel_group_id": "S74_B2_592862"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_156646_G1",
+          "id": "S74_B2_592862_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5153,10 +5153,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_156646"
+          "parallel_group_id": "S74_B2_592862"
         },
         {
-          "id": "S74_B2_156646_G2",
+          "id": "S74_B2_592862_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
@@ -5257,12 +5257,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_156646"
+          "parallel_group_id": "S74_B2_592862"
         }
       ],
       "0": [
         {
-          "id": "S77_B2_61349",
+          "id": "S77_B2_568110",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -5436,7 +5436,7 @@
       ],
       "1": [
         {
-          "id": "S77_B2_61349",
+          "id": "S77_B2_568110",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
@@ -5634,7 +5634,7 @@
       ],
       "8": [
         {
-          "id": "S64_B2_356672",
+          "id": "S64_B2_842086",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -5740,7 +5740,7 @@
       ],
       "9": [
         {
-          "id": "S64_B2_356672",
+          "id": "S64_B2_842086",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
@@ -5846,7 +5846,7 @@
       ],
       "6": [
         {
-          "id": "S76_B2_437321",
+          "id": "S76_B2_526009",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -5938,7 +5938,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_813075",
+          "id": "S63_B2_302614",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -6016,7 +6016,7 @@
       ],
       "7": [
         {
-          "id": "S76_B2_437321",
+          "id": "S76_B2_526009",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -6108,7 +6108,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_813075",
+          "id": "S63_B2_302614",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -6188,7 +6188,7 @@
     "0": {
       "4": [
         {
-          "id": "S57_B2_525597_G1",
+          "id": "S57_B2_355057_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6257,10 +6257,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G2",
+          "id": "S57_B2_355057_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6329,10 +6329,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G3",
+          "id": "S57_B2_355057_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6401,10 +6401,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G4",
+          "id": "S57_B2_355057_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6461,12 +6461,12 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_525597_G1",
+          "id": "S57_B2_355057_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6535,10 +6535,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G2",
+          "id": "S57_B2_355057_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6607,10 +6607,10 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G3",
+          "id": "S57_B2_355057_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6679,10 +6679,10 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         },
         {
-          "id": "S57_B2_525597_G4",
+          "id": "S57_B2_355057_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
@@ -6739,7 +6739,7 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_525597"
+          "parallel_group_id": "S57_B2_355057"
         }
       ],
       "3": [
@@ -7336,7 +7336,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_101363",
+          "id": "S63_B2_273476",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -7538,7 +7538,7 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_101363",
+          "id": "S63_B2_273476",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
@@ -7616,7 +7616,7 @@
       ],
       "8": [
         {
-          "id": "S76_B2_9978",
+          "id": "S76_B2_295411",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -7774,7 +7774,7 @@
       ],
       "9": [
         {
-          "id": "S76_B2_9978",
+          "id": "S76_B2_295411",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
@@ -7932,7 +7932,7 @@
       ],
       "6": [
         {
-          "id": "S53_B2_402690_G1",
+          "id": "S53_B2_577340_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -7997,10 +7997,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_402690"
+          "parallel_group_id": "S53_B2_577340"
         },
         {
-          "id": "S53_B2_402690_G2",
+          "id": "S53_B2_577340_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -8060,12 +8060,12 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_402690"
+          "parallel_group_id": "S53_B2_577340"
         }
       ],
       "7": [
         {
-          "id": "S53_B2_402690_G1",
+          "id": "S53_B2_577340_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
@@ -8130,10 +8130,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_402690"
+          "parallel_group_id": "S53_B2_577340"
         },
         {
-          "id": "S53_B2_402690_G2",
+          "id": "S53_B2_577340_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -8193,7 +8193,7 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_402690"
+          "parallel_group_id": "S53_B2_577340"
         }
       ]
     }
