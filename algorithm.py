@@ -450,9 +450,6 @@ def create_block_session(sid, teachers_list, students, teachers_dict,
         logger.error(f"Block session {session['id']} (Subject {sid}, size={block_size}) has NO CANDIDATES.")
     return session
 
-
-
-
 # --- Evaluation Function (penalizes idle gaps) ---
 def evaluate_schedule(schedule, all_sessions, subjects):
     """
