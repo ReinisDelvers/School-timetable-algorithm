@@ -13,7 +13,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 29,
+              "id": 1,
               "name": "Gun\u0101rs  Andersons"
             }
           ],
@@ -101,7 +101,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 27,
+              "id": 8,
               "name": "Aiga  Duk\u0101te"
             }
           ],
@@ -189,7 +189,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 28,
+              "id": 9,
               "name": "Gunta  Falka"
             }
           ],
@@ -277,7 +277,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 30,
+              "id": 25,
               "name": "Andris  Zelti\u0146\u0161"
             }
           ],
@@ -355,7 +355,7 @@
           "subject_name": "Kult\u016bra un m\u0101ksla",
           "teachers": [
             {
-              "id": 34,
+              "id": 24,
               "name": "Anita  Za\u013caiskalne"
             }
           ],
@@ -576,12 +576,12 @@
       ],
       "1": [
         {
-          "id": "S74_B2_895746_G1",
+          "id": "S74_B2_195514_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -681,15 +681,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_895746"
+          "parallel_group_id": "S74_B2_195514"
         },
         {
-          "id": "S74_B2_895746_G2",
+          "id": "S74_B2_195514_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -785,15 +785,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_895746"
+          "parallel_group_id": "S74_B2_195514"
         },
         {
-          "id": "S75_B2_480807",
+          "id": "S75_B2_359598",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
             {
-              "id": 40,
+              "id": 10,
               "name": "Inese  Jakubova"
             }
           ],
@@ -902,12 +902,12 @@
       ],
       "2": [
         {
-          "id": "S74_B2_895746_G1",
+          "id": "S74_B2_195514_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -1007,15 +1007,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_895746"
+          "parallel_group_id": "S74_B2_195514"
         },
         {
-          "id": "S74_B2_895746_G2",
+          "id": "S74_B2_195514_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -1111,15 +1111,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_895746"
+          "parallel_group_id": "S74_B2_195514"
         },
         {
-          "id": "S75_B2_480807",
+          "id": "S75_B2_359598",
           "subject_id": 75,
           "subject_name": "Matem\u0101tika I",
           "teachers": [
             {
-              "id": 40,
+              "id": 10,
               "name": "Inese  Jakubova"
             }
           ],
@@ -1233,7 +1233,7 @@
           "subject_name": "Krievu valoda",
           "teachers": [
             {
-              "id": 36,
+              "id": 4,
               "name": "Inga  Bistadze"
             }
           ],
@@ -1401,7 +1401,7 @@
           "subject_name": "2.V\u0101cu valoda",
           "teachers": [
             {
-              "id": 32,
+              "id": 16,
               "name": "Inese  P\u0113tersone"
             }
           ],
@@ -1482,12 +1482,12 @@
       ],
       "8": [
         {
-          "id": "S72_B2_288638",
+          "id": "S72_B2_845298",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
             {
-              "id": 44,
+              "id": 2,
               "name": "Eduards  Baumanis"
             }
           ],
@@ -1606,12 +1606,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_583654_G1",
+          "id": "S53_B2_918058_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 45,
+              "id": 14,
               "name": "Anna Elizabete Kaspersone"
             }
           ],
@@ -1671,10 +1671,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_583654"
+          "parallel_group_id": "S53_B2_918058"
         },
         {
-          "id": "S53_B2_583654_G2",
+          "id": "S53_B2_918058_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1734,17 +1734,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_583654"
+          "parallel_group_id": "S53_B2_918058"
         }
       ],
       "9": [
         {
-          "id": "S72_B2_288638",
+          "id": "S72_B2_845298",
           "subject_id": 72,
           "subject_name": "Programm\u0113\u0161ana I",
           "teachers": [
             {
-              "id": 44,
+              "id": 2,
               "name": "Eduards  Baumanis"
             }
           ],
@@ -1863,12 +1863,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S53_B2_583654_G1",
+          "id": "S53_B2_918058_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 45,
+              "id": 14,
               "name": "Anna Elizabete Kaspersone"
             }
           ],
@@ -1928,10 +1928,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_583654"
+          "parallel_group_id": "S53_B2_918058"
         },
         {
-          "id": "S53_B2_583654_G2",
+          "id": "S53_B2_918058_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -1991,17 +1991,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_583654"
+          "parallel_group_id": "S53_B2_918058"
         }
       ],
       "6": [
         {
-          "id": "S64_B2_770910",
+          "id": "S64_B2_819026",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -2100,12 +2100,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_383812",
+          "id": "S79_B2_828741",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -2150,12 +2150,12 @@
       ],
       "7": [
         {
-          "id": "S64_B2_770910",
+          "id": "S64_B2_819026",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -2254,12 +2254,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S79_B2_383812",
+          "id": "S79_B2_828741",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -2307,8 +2307,8 @@
           "subject_name": "Ang\u013cu litera\u016bra",
           "teachers": [
             {
-              "id": 48,
-              "name": "anglu literat\u016bras skolot\u0101ja"
+              "id": 26,
+              "name": "ang\u013cu literat\u016bras skolot\u0101ja"
             }
           ],
           "students": [
@@ -2333,7 +2333,7 @@
           "subject_name": "Fran\u010du valoda",
           "teachers": [
             {
-              "id": 37,
+              "id": 7,
               "name": "Evija  Circene"
             }
           ],
@@ -2409,7 +2409,7 @@
           "subject_name": "Fizika II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -2473,7 +2473,7 @@
           "subject_name": "3.V\u0101cu valoda",
           "teachers": [
             {
-              "id": 31,
+              "id": 5,
               "name": "Svetlana  Bondarenko"
             }
           ],
@@ -2513,7 +2513,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 29,
+              "id": 1,
               "name": "Gun\u0101rs  Andersons"
             }
           ],
@@ -2601,7 +2601,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 27,
+              "id": 8,
               "name": "Aiga  Duk\u0101te"
             }
           ],
@@ -2689,7 +2689,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 28,
+              "id": 9,
               "name": "Gunta  Falka"
             }
           ],
@@ -2777,7 +2777,7 @@
           "subject_name": "Sports",
           "teachers": [
             {
-              "id": 30,
+              "id": 25,
               "name": "Andris  Zelti\u0146\u0161"
             }
           ],
@@ -2850,12 +2850,12 @@
       ],
       "2": [
         {
-          "id": "S74_B2_552756_G1",
+          "id": "S74_B2_207900_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -2955,15 +2955,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_552756"
+          "parallel_group_id": "S74_B2_207900"
         },
         {
-          "id": "S74_B2_552756_G2",
+          "id": "S74_B2_207900_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -3059,17 +3059,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_552756"
+          "parallel_group_id": "S74_B2_207900"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_552756_G1",
+          "id": "S74_B2_207900_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -3169,15 +3169,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_552756"
+          "parallel_group_id": "S74_B2_207900"
         },
         {
-          "id": "S74_B2_552756_G2",
+          "id": "S74_B2_207900_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -3273,7 +3273,7 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_552756"
+          "parallel_group_id": "S74_B2_207900"
         },
         {
           "id": "S75_H0",
@@ -3281,7 +3281,7 @@
           "subject_name": "Matem\u0101tika I",
           "teachers": [
             {
-              "id": 40,
+              "id": 10,
               "name": "Inese  Jakubova"
             }
           ],
@@ -3390,12 +3390,12 @@
       ],
       "0": [
         {
-          "id": "S77_B2_419319",
+          "id": "S77_B2_806463",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
             {
-              "id": 38,
+              "id": 12,
               "name": "Indra  J\u0113kabsone"
             }
           ],
@@ -3562,12 +3562,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_419542",
+          "id": "S69_B2_23268",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
             {
-              "id": 33,
+              "id": 13,
               "name": "M\u0101rti\u0146\u0161  Kal\u0113js"
             }
           ],
@@ -3588,12 +3588,12 @@
       ],
       "1": [
         {
-          "id": "S77_B2_419319",
+          "id": "S77_B2_806463",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
             {
-              "id": 38,
+              "id": 12,
               "name": "Indra  J\u0113kabsone"
             }
           ],
@@ -3760,12 +3760,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S69_B2_419542",
+          "id": "S69_B2_23268",
           "subject_id": 69,
           "subject_name": "Koris",
           "teachers": [
             {
-              "id": 33,
+              "id": 13,
               "name": "M\u0101rti\u0146\u0161  Kal\u0113js"
             }
           ],
@@ -3786,12 +3786,12 @@
       ],
       "8": [
         {
-          "id": "S79_B2_552394",
+          "id": "S79_B2_901021",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -3836,12 +3836,12 @@
       ],
       "9": [
         {
-          "id": "S79_B2_552394",
+          "id": "S79_B2_901021",
           "subject_id": 79,
           "subject_name": "Programm\u0113\u0161ana II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -3886,12 +3886,12 @@
       ],
       "6": [
         {
-          "id": "S64_B2_187012",
+          "id": "S64_B2_78995",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -3992,12 +3992,12 @@
       ],
       "7": [
         {
-          "id": "S64_B2_187012",
+          "id": "S64_B2_78995",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -4103,7 +4103,7 @@
           "subject_name": "Fran\u010du valoda",
           "teachers": [
             {
-              "id": 37,
+              "id": 7,
               "name": "Evija  Circene"
             }
           ],
@@ -4179,7 +4179,7 @@
           "subject_name": "Fizika II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -4243,7 +4243,7 @@
           "subject_name": "3.V\u0101cu valoda",
           "teachers": [
             {
-              "id": 31,
+              "id": 5,
               "name": "Svetlana  Bondarenko"
             }
           ],
@@ -4278,12 +4278,12 @@
     "1": {
       "4": [
         {
-          "id": "S57_B2_502647_G1",
+          "id": "S57_B2_99461_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 52,
+              "id": 23,
               "name": "Ieva  Vizule"
             }
           ],
@@ -4347,15 +4347,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G2",
+          "id": "S57_B2_99461_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 51,
+              "id": 21,
               "name": "Dace  Smilga"
             }
           ],
@@ -4419,15 +4419,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G3",
+          "id": "S57_B2_99461_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 50,
+              "id": 19,
               "name": "Ru\u010di  Sakud\u017ea"
             }
           ],
@@ -4491,15 +4491,15 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G4",
+          "id": "S57_B2_99461_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 49,
+              "id": 11,
               "name": "Krist\u012bne  Joelsone"
             }
           ],
@@ -4551,17 +4551,17 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_502647_G1",
+          "id": "S57_B2_99461_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 52,
+              "id": 23,
               "name": "Ieva  Vizule"
             }
           ],
@@ -4625,15 +4625,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G2",
+          "id": "S57_B2_99461_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 51,
+              "id": 21,
               "name": "Dace  Smilga"
             }
           ],
@@ -4697,15 +4697,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G3",
+          "id": "S57_B2_99461_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 50,
+              "id": 19,
               "name": "Ru\u010di  Sakud\u017ea"
             }
           ],
@@ -4769,15 +4769,15 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         },
         {
-          "id": "S57_B2_502647_G4",
+          "id": "S57_B2_99461_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 49,
+              "id": 11,
               "name": "Krist\u012bne  Joelsone"
             }
           ],
@@ -4829,17 +4829,17 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_502647"
+          "parallel_group_id": "S57_B2_99461"
         }
       ],
       "2": [
         {
-          "id": "S74_B2_359516_G1",
+          "id": "S74_B2_479526_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -4939,15 +4939,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_359516"
+          "parallel_group_id": "S74_B2_479526"
         },
         {
-          "id": "S74_B2_359516_G2",
+          "id": "S74_B2_479526_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -5043,17 +5043,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_359516"
+          "parallel_group_id": "S74_B2_479526"
         }
       ],
       "3": [
         {
-          "id": "S74_B2_359516_G1",
+          "id": "S74_B2_479526_G1",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -5153,15 +5153,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_359516"
+          "parallel_group_id": "S74_B2_479526"
         },
         {
-          "id": "S74_B2_359516_G2",
+          "id": "S74_B2_479526_G2",
           "subject_id": 74,
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -5257,17 +5257,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S74_B2_359516"
+          "parallel_group_id": "S74_B2_479526"
         }
       ],
       "0": [
         {
-          "id": "S77_B2_740010",
+          "id": "S77_B2_448723",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
             {
-              "id": 38,
+              "id": 12,
               "name": "Indra  J\u0113kabsone"
             }
           ],
@@ -5436,12 +5436,12 @@
       ],
       "1": [
         {
-          "id": "S77_B2_740010",
+          "id": "S77_B2_448723",
           "subject_id": 77,
           "subject_name": "Soci\u0101l\u0101s zin\u0101tnes II",
           "teachers": [
             {
-              "id": 38,
+              "id": 12,
               "name": "Indra  J\u0113kabsone"
             }
           ],
@@ -5613,7 +5613,7 @@
           "subject_name": "Koris",
           "teachers": [
             {
-              "id": 33,
+              "id": 13,
               "name": "M\u0101rti\u0146\u0161  Kal\u0113js"
             }
           ],
@@ -5634,12 +5634,12 @@
       ],
       "8": [
         {
-          "id": "S64_B2_302767",
+          "id": "S64_B2_316496",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -5740,12 +5740,12 @@
       ],
       "9": [
         {
-          "id": "S64_B2_302767",
+          "id": "S64_B2_316496",
           "subject_id": 64,
           "subject_name": "Biolo\u0123ija II",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -5846,13 +5846,13 @@
       ],
       "6": [
         {
-          "id": "S76_B2_377374",
+          "id": "S76_B2_31857",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
             {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
+              "id": 20,
+              "name": "Krist\u012bne  Svele"
             }
           ],
           "students": [
@@ -5938,12 +5938,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_500647",
+          "id": "S63_B2_345928",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
             {
-              "id": 46,
+              "id": 18,
               "name": "Jolanta  Rim\u0161a"
             }
           ],
@@ -6016,13 +6016,13 @@
       ],
       "7": [
         {
-          "id": "S76_B2_377374",
+          "id": "S76_B2_31857",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
             {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
+              "id": 20,
+              "name": "Krist\u012bne  Svele"
             }
           ],
           "students": [
@@ -6108,12 +6108,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_500647",
+          "id": "S63_B2_345928",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
             {
-              "id": 46,
+              "id": 18,
               "name": "Jolanta  Rim\u0161a"
             }
           ],
@@ -6188,12 +6188,12 @@
     "0": {
       "4": [
         {
-          "id": "S57_B2_682078_G1",
+          "id": "S57_B2_679124_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 52,
+              "id": 23,
               "name": "Ieva  Vizule"
             }
           ],
@@ -6257,15 +6257,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G2",
+          "id": "S57_B2_679124_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 51,
+              "id": 21,
               "name": "Dace  Smilga"
             }
           ],
@@ -6329,15 +6329,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G3",
+          "id": "S57_B2_679124_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 50,
+              "id": 19,
               "name": "Ru\u010di  Sakud\u017ea"
             }
           ],
@@ -6401,15 +6401,15 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G4",
+          "id": "S57_B2_679124_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 49,
+              "id": 11,
               "name": "Krist\u012bne  Joelsone"
             }
           ],
@@ -6461,17 +6461,17 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         }
       ],
       "5": [
         {
-          "id": "S57_B2_682078_G1",
+          "id": "S57_B2_679124_G1",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 52,
+              "id": 23,
               "name": "Ieva  Vizule"
             }
           ],
@@ -6535,15 +6535,15 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G2",
+          "id": "S57_B2_679124_G2",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 51,
+              "id": 21,
               "name": "Dace  Smilga"
             }
           ],
@@ -6607,15 +6607,15 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G3",
+          "id": "S57_B2_679124_G3",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 50,
+              "id": 19,
               "name": "Ru\u010di  Sakud\u017ea"
             }
           ],
@@ -6679,15 +6679,15 @@
           ],
           "group": 3,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         },
         {
-          "id": "S57_B2_682078_G4",
+          "id": "S57_B2_679124_G4",
           "subject_id": 57,
           "subject_name": "Ang\u013cu valoda II",
           "teachers": [
             {
-              "id": 49,
+              "id": 11,
               "name": "Krist\u012bne  Joelsone"
             }
           ],
@@ -6739,7 +6739,7 @@
           ],
           "group": 4,
           "is_parallel": true,
-          "parallel_group_id": "S57_B2_682078"
+          "parallel_group_id": "S57_B2_679124"
         }
       ],
       "3": [
@@ -6749,7 +6749,7 @@
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 39,
+              "id": 3,
               "name": "Maija  Bietaga"
             }
           ],
@@ -6857,7 +6857,7 @@
           "subject_name": "Matem\u0101tika II",
           "teachers": [
             {
-              "id": 41,
+              "id": 15,
               "name": "Ilona  Lauva"
             }
           ],
@@ -6963,7 +6963,7 @@
           "subject_name": "Krievu valoda",
           "teachers": [
             {
-              "id": 35,
+              "id": 22,
               "name": "Miksis  Valdemaras"
             }
           ],
@@ -7131,7 +7131,7 @@
           "subject_name": "2.V\u0101cu valoda",
           "teachers": [
             {
-              "id": 32,
+              "id": 16,
               "name": "Inese  P\u0113tersone"
             }
           ],
@@ -7217,7 +7217,7 @@
           "subject_name": "Biolo\u0123ija I",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -7336,12 +7336,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_779182",
+          "id": "S63_B2_32523",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
             {
-              "id": 46,
+              "id": 18,
               "name": "Jolanta  Rim\u0161a"
             }
           ],
@@ -7419,7 +7419,7 @@
           "subject_name": "Biolo\u0123ija I",
           "teachers": [
             {
-              "id": 43,
+              "id": 17,
               "name": "Ilze  Rikmane"
             }
           ],
@@ -7538,12 +7538,12 @@
           "parallel_group_id": null
         },
         {
-          "id": "S63_B2_779182",
+          "id": "S63_B2_32523",
           "subject_id": 63,
           "subject_name": "\u0136\u012bmija II",
           "teachers": [
             {
-              "id": 46,
+              "id": 18,
               "name": "Jolanta  Rim\u0161a"
             }
           ],
@@ -7616,13 +7616,13 @@
       ],
       "8": [
         {
-          "id": "S76_B2_797856",
+          "id": "S76_B2_767292",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
             {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
+              "id": 20,
+              "name": "Krist\u012bne  Svele"
             }
           ],
           "students": [
@@ -7713,7 +7713,7 @@
           "subject_name": "Fizika II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -7774,13 +7774,13 @@
       ],
       "9": [
         {
-          "id": "S76_B2_797856",
+          "id": "S76_B2_767292",
           "subject_id": 76,
           "subject_name": "Latvie\u0161u valoda II",
           "teachers": [
             {
-              "id": 47,
-              "name": "Krist\u012bne  Sevele"
+              "id": 20,
+              "name": "Krist\u012bne  Svele"
             }
           ],
           "students": [
@@ -7871,7 +7871,7 @@
           "subject_name": "Fizika II",
           "teachers": [
             {
-              "id": 42,
+              "id": 6,
               "name": "Marta  Brit\u0101la"
             }
           ],
@@ -7932,12 +7932,12 @@
       ],
       "6": [
         {
-          "id": "S53_B2_62845_G1",
+          "id": "S53_B2_13492_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 45,
+              "id": 14,
               "name": "Anna Elizabete Kaspersone"
             }
           ],
@@ -7997,10 +7997,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_62845"
+          "parallel_group_id": "S53_B2_13492"
         },
         {
-          "id": "S53_B2_62845_G2",
+          "id": "S53_B2_13492_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -8060,17 +8060,17 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_62845"
+          "parallel_group_id": "S53_B2_13492"
         }
       ],
       "7": [
         {
-          "id": "S53_B2_62845_G1",
+          "id": "S53_B2_13492_G1",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [
             {
-              "id": 45,
+              "id": 14,
               "name": "Anna Elizabete Kaspersone"
             }
           ],
@@ -8130,10 +8130,10 @@
           ],
           "group": 1,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_62845"
+          "parallel_group_id": "S53_B2_13492"
         },
         {
-          "id": "S53_B2_62845_G2",
+          "id": "S53_B2_13492_G2",
           "subject_id": 53,
           "subject_name": "Dizains un tehnolo\u0123ijas II",
           "teachers": [],
@@ -8193,7 +8193,7 @@
           ],
           "group": 2,
           "is_parallel": true,
-          "parallel_group_id": "S53_B2_62845"
+          "parallel_group_id": "S53_B2_13492"
         }
       ]
     }
