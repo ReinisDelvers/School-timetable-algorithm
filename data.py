@@ -17,15 +17,15 @@ def teacher_table_creator():
         monday BOOLEAN NOT NULL DEFAULT 1,
         tuesday BOOLEAN NOT NULL DEFAULT 1,
         wednesday BOOLEAN NOT NULL DEFAULT 1,
-        thursday BOOLEAN NOT NULL DEFAULT 1
-        monday1 INTEGER NOT NULL DEFAULT 0,
-        tuesday1 INTEGER NOT NULL DEFAULT 0,
-        wednesday1 INTEGER NOT NULL DEFAULT 0,
-        thursday1 INTEGER NOT NULL DEFAULT 0,
-        monday2 INTEGER NOT NULL DEFAULT 0,
-        tuesday2 INTEGER NOT NULL DEFAULT 0,
-        wednesday2 INTEGER NOT NULL DEFAULT 0,
-        thursday2 INTEGER NOT NULL DEFAULT 0;
+        thursday BOOLEAN NOT NULL DEFAULT 1,
+        monday1 INTEGER NOT NULL DEFAULT 1,
+        tuesday1 INTEGER NOT NULL DEFAULT 1,
+        wednesday1 INTEGER NOT NULL DEFAULT 1,
+        thursday1 INTEGER NOT NULL DEFAULT 1,
+        monday2 INTEGER NOT NULL DEFAULT 10,
+        tuesday2 INTEGER NOT NULL DEFAULT 10,
+        wednesday2 INTEGER NOT NULL DEFAULT 10,
+        thursday2 INTEGER NOT NULL DEFAULT 10
         )
         """
     )
@@ -45,7 +45,7 @@ def subject_table_creator():
         max_hours_per_day INTEGER NOT NULL,
         max_student_count_per_group INTEGER NOT NULL,
         min_hours_per_day INTEGER NOT NULL,
-        parallel_subject_groups INTEGER NOT NULL DEFAULT 0;
+        parallel_subject_groups INTEGER NOT NULL DEFAULT 0
         )
         """
     )
@@ -95,7 +95,6 @@ def subject_student_table_creator():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         json_subject_ids INTEGER NOT NULL,
         student_id INTEGER NOT NULL,
-
         FOREIGN KEY (student_id) REFERENCES student(id)
         )
         """
@@ -150,7 +149,7 @@ def hour_blocker_table_creator():
         thursday8 INTEGER NOT NULL DEFAULT 1,
         thursday9 INTEGER NOT NULL DEFAULT 1,
         thursday10 INTEGER NOT NULL DEFAULT 1
-        );
+        )
         """
     )
     conn.commit()

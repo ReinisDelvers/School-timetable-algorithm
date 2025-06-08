@@ -471,35 +471,35 @@ class MainGUI:
 
         ent4 = tk.Entry(frame, font=("Arial", 18))
         ent4.grid(row=4, column=3, sticky=tk.W+tk.E, **options)
-        ent4.insert(0, 0)
+        ent4.insert(0, 1)
 
         ent5 = tk.Entry(frame, font=("Arial", 18))
         ent5.grid(row=4, column=4, sticky=tk.W+tk.E, **options)
-        ent5.insert(0, 0)
+        ent5.insert(0, 10)
 
         ent6 = tk.Entry(frame, font=("Arial", 18))
         ent6.grid(row=4, column=5, sticky=tk.W+tk.E, **options)
-        ent6.insert(0, 0)
+        ent6.insert(0, 1)
 
         ent7 = tk.Entry(frame, font=("Arial", 18))
         ent7.grid(row=4, column=6, sticky=tk.W+tk.E, **options)
-        ent7.insert(0, 0)
+        ent7.insert(0, 10)
 
         ent8 = tk.Entry(frame, font=("Arial", 18))
         ent8.grid(row=4, column=7, sticky=tk.W+tk.E, **options)
-        ent8.insert(0, 0)
+        ent8.insert(0, 1)
 
         ent9 = tk.Entry(frame, font=("Arial", 18))
         ent9.grid(row=4, column=8, sticky=tk.W+tk.E, **options)
-        ent9.insert(0, 0)
+        ent9.insert(0, 10)
 
         ent10 = tk.Entry(frame, font=("Arial", 18))
         ent10.grid(row=4, column=9, sticky=tk.W+tk.E, **options)
-        ent10.insert(0, 0)
+        ent10.insert(0, 1)
 
         ent11 = tk.Entry(frame, font=("Arial", 18))
         ent11.grid(row=4, column=10, sticky=tk.W+tk.E, **options)
-        ent11.insert(0, 0)
+        ent11.insert(0, 10)
 
         checkboxent1 = tk.IntVar(value=1)
         box1 = tk.Checkbutton(frame,  font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
