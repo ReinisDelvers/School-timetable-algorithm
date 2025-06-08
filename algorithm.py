@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 # --- Constants ---
 PERIODS_PER_DAY = 10
 DAYS = ["monday", "tuesday", "wednesday", "thursday"]
-STALL_THRESHOLD = 1000       # Stop if no improvement for 10,000 iterations
+STALL_THRESHOLD = 10000       # Stop if no improvement for 10,000 iterations
 LOG_INTERVAL = 1000           # Log status every 1,000 iterations
 
 # --- Helper Functions ---
@@ -382,13 +382,20 @@ def create_single_session(sid, teachers_list, hour, students, teachers_dict,
             continue
 
         for p in range(PERIODS_PER_DAY):
-            # global blocker
             if hour_blocker[day][p] != 1:
                 continue
 
-            # half-day blocker  
-            half_index = 8 + di if p < PERIODS_PER_DAY//2 else 12 + di
-            if any(teachers_dict[tid][half_index] == 1 for tid in teachers_list):
+            ok = True
+            for tid in teachers_list:
+                raw_start = teachers_dict[tid][8 + di]
+                raw_end   = teachers_dict[tid][12 + di]
+                # interpret 0 as full-day
+                start = raw_start - 1 if raw_start > 0 else 0
+                end   = raw_end   - 1 if raw_end   > 0 else PERIODS_PER_DAY - 1
+                if not (start <= p <= end):
+                    ok = False
+                    break
+            if not ok:
                 continue
 
             session['candidates'].append(di * PERIODS_PER_DAY + p)
@@ -416,21 +423,27 @@ def create_block_session(sid, teachers_list, students, teachers_dict,
     }
 
     for di, day in enumerate(DAYS):
-        # must be available that day
         if not all(teachers_dict[tid][4 + di] for tid in teachers_list):
             continue
+
+        # precompute each teacher's window
+        windows = []
+        for tid in teachers_list:
+            rs = teachers_dict[tid][8 + di]
+            re = teachers_dict[tid][12 + di]
+            start = rs - 1 if rs > 0 else 0
+            end   = re - 1 if re > 0 else PERIODS_PER_DAY - 1
+            windows.append((start, end))
 
         for p in range(PERIODS_PER_DAY - block_size + 1):
             can_place = True
             for offset in range(block_size):
-                # global blocker
-                if hour_blocker[day][p + offset] != 1:
+                idx = p + offset
+                if hour_blocker[day][idx] != 1:
                     can_place = False
                     break
-
-                # half-day blocker
-                half_index = 8 + di if (p + offset) < PERIODS_PER_DAY//2 else 12 + di
-                if any(teachers_dict[tid][half_index] == 1 for tid in teachers_list):
+                # check each teacher's window
+                if any(idx < w0 or idx > w1 for (w0, w1) in windows):
                     can_place = False
                     break
 
@@ -438,10 +451,9 @@ def create_block_session(sid, teachers_list, students, teachers_dict,
                 session['candidates'].append(di * PERIODS_PER_DAY + p)
 
     if not session['candidates']:
-        logger.error(f"Block session {session['id']} (Subject {sid}, size={block_size}) has NO CANDIDATES.")
+        logger.error(f"Block session {session['id']} "
+                     f"(Subject {sid}, size={block_size}) has NO CANDIDATES.")
     return session
-
-
 
 # --- Evaluation Function (penalizes idle gaps) ---
 def evaluate_schedule(schedule, all_sessions, subjects):
@@ -455,7 +467,7 @@ def evaluate_schedule(schedule, all_sessions, subjects):
       - Student daily load <4 or >6 (penalized but not hard).
       - Idle gaps between a student’s classes.
     """
-    IDLE_PENALTY = 1000  # penalty per empty period between classes
+    IDLE_PENALTY = 5000  # penalty per empty period between classes
 
     score = 0
     scheduled_count = defaultdict(int)
