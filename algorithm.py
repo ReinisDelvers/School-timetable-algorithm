@@ -1,16 +1,11 @@
-import sqlite3
 import math
 import logging
 import time
-import threading
-from itertools import groupby
-from functools import lru_cache
 from collections import defaultdict, Counter
 from data import (
     get_teacher, get_subject, get_student,
     get_subject_teacher, get_subject_student, get_hour_blocker
 )
-import statistics
 import copy
 import random
 import json  # For reading subject–student mappings
@@ -153,23 +148,28 @@ def validate_input_data(teachers, subjects, subject_teachers, subj_students):
 # --- Session Creation ---
 def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blocker):
     """
-    Build sessions for all subjects.  Parallel subjects (subj[7]==1)
-    get split into subj[2] groups *up front*, then we force their
-    candidate‐lists to the intersection across all groups so that
-    they can *only* land in perfectly parallel slots.
+    Build sessions for all subjects.
+      - Parallel subjects (subj[7] == 1) produce `hours_per_week` combined sessions
+        requiring ALL assigned teachers at once (no student grouping yet).
+      - Non-parallel subjects split into student groups up front as before.
+    Each parallel session is tagged with 'parallel_with' = subject_id for later splitting.
     """
+    # 1) validate inputs
     if not validate_input_data(teachers, subjects, subject_teachers, subj_students):
         logger.error("Input data validation failed")
         return []
 
-    # map subject → list of (teacher_id, group_count)
+    # 2) map subject → list of (teacher_id, group_count)
     subject_teacher_groups = defaultdict(list)
     for st in subject_teachers:
-        sid, tid, grp = st[1], st[3], max(1, st[7])
+        sid = st[1]
+        tid = st[3]
+        grp = max(1, st[7])
         subject_teacher_groups[sid].append((tid, grp))
 
     sessions = []
 
+    # 3) build sessions
     for sid, subj in subjects.items():
         hours_per_week = subj[3]
         maxpd = max(0, subj[4])
@@ -177,85 +177,37 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
         if minpd > maxpd:
             minpd = maxpd
 
-        all_students = sorted(subj_students.get(sid, []))
+        all_students   = sorted(subj_students.get(sid, []))
         teacher_groups = subject_teacher_groups.get(sid, [])
         if not teacher_groups:
             logger.error(f"No teacher assigned for Subject {sid}")
             continue
 
-        # flatten teacher‐slots
-        flat_teachers = [tid for tid, cnt in teacher_groups for _ in range(cnt)]
+        # flatten teacher list (respect group counts)
+        flat_teachers = [tid for (tid, cnt) in teacher_groups for _ in range(cnt)]
 
-        # === PARALLEL ===
+        # --- PARALLEL SUBJECTS ---
         if subj[7] == 1:
-            n_groups = subj[2]
-            size = math.ceil(len(all_students) / n_groups)
-            student_groups = [
-                all_students[i*size:(i+1)*size]
-                for i in range(n_groups)
-            ]
-            # pad teachers if too few
-            if len(flat_teachers) < n_groups:
-                flat_teachers += [None] * (n_groups - len(flat_teachers))
-
-            for grp_idx, (studs, tid) in enumerate(zip(student_groups, flat_teachers), start=1):
-                if not studs or tid is None:
-                    continue
-
-                # full‐block chunks
-                if minpd >= 2:
-                    full = hours_per_week // minpd
-                    left = hours_per_week - full * minpd
-                    for _ in range(full):
-                        blk = create_block_session(
-                            sid=sid,
-                            teachers_list=[tid],
-                            students=studs,
-                            teachers_dict=teachers,
-                            block_size=minpd,
-                            hour_blocker=hour_blocker,
-                            subjects_dict=subjects,
-                            parallel_group=sid
-                        )
-                        blk.update({'is_parallel': True, 'group': grp_idx})
-                        sessions.append(blk)
-
-                    for _ in range(left):
-                        single = create_single_session(
-                            sid=sid,
-                            teachers_list=[tid],
-                            hour=0,
-                            students=studs,
-                            teachers_dict=teachers,
-                            maxpd=maxpd,
-                            minpd=1,
-                            hour_blocker=hour_blocker,
-                            subjects_dict=subjects,
-                            parallel_group=sid
-                        )
-                        single.update({'is_parallel': True, 'group': grp_idx})
-                        sessions.append(single)
-
-                else:
-                    # hour‐by‐hour
-                    for h in range(hours_per_week):
-                        sess = create_single_session(
-                            sid=sid,
-                            teachers_list=[tid],
-                            hour=h,
-                            students=studs,
-                            teachers_dict=teachers,
-                            maxpd=maxpd,
-                            minpd=minpd,
-                            hour_blocker=hour_blocker,
-                            subjects_dict=subjects,
-                            parallel_group=sid
-                        )
-                        sess.update({'is_parallel': True, 'group': grp_idx})
-                        sessions.append(sess)
+            # create one combined single-hour session per required hour
+            for hour in range(hours_per_week):
+                sess = create_single_session(
+                    sid=sid,
+                    teachers_list=flat_teachers,
+                    hour=hour,
+                    students=all_students,
+                    teachers_dict=teachers,
+                    maxpd=maxpd,
+                    minpd=minpd,
+                    hour_blocker=hour_blocker,
+                    subjects_dict=subjects,
+                    parallel_group=None
+                )
+                # mark it for later splitting
+                sess['parallel_with'] = sid
+                sessions.append(sess)
             continue
 
-        # === NON-PARALLEL ===
+        # --- NON-PARALLEL SUBJECTS ---
         n_groups = subj[2]
         size = math.ceil(len(all_students) / n_groups)
         student_groups = [
@@ -271,6 +223,8 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
             if minpd >= 2:
                 full = hours_per_week // minpd
                 left = hours_per_week - full * minpd
+
+                # full-block sessions
                 for _ in range(full):
                     blk = create_block_session(
                         sid=sid,
@@ -285,11 +239,12 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     blk['group'] = grp_idx
                     sessions.append(blk)
 
-                if left > 0:
+                # leftover single-hour sessions
+                for i in range(left):
                     single = create_single_session(
                         sid=sid,
                         teachers_list=[tid],
-                        hour=0,
+                        hour=i,
                         students=studs,
                         teachers_dict=teachers,
                         maxpd=maxpd,
@@ -302,6 +257,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     sessions.append(single)
 
             else:
+                # hour-by-hour scheduling
                 for h in range(hours_per_week):
                     sess = create_single_session(
                         sid=sid,
@@ -318,25 +274,43 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     sess['group'] = grp_idx
                     sessions.append(sess)
 
-    # --- force parallel sessions to share only truly common slots ---
-    par_map = defaultdict(list)
-    for s in sessions:
-        if s.get('is_parallel'):
-            par_map[s['parallel_with']].append(s)
-
-    for pg, group in par_map.items():
-        # intersect all their candidate‐sets
-        common = set(group[0]['candidates'])
-        for s in group[1:]:
-            common &= set(s['candidates'])
-        common = sorted(common)
-        # overwrite each
-        for s in group:
-            s['candidates'] = common.copy()
-
     return sessions
 
+def split_parallel_sessions(scheduled_sessions, subjects, subj_students):
+    """
+    After scheduling, expand each combined 'parallel_with' session into its
+    subj[2] student-groups—keeping them all in the same timeslot.
+    """
+    out = []
+    parallel_map = defaultdict(list)
 
+    # separate combined parallel sessions from everything else
+    for sess in scheduled_sessions:
+        if 'parallel_with' in sess:
+            parallel_map[sess['parallel_with']].append(sess)
+        else:
+            out.append(sess)
+
+    # for each subject, split its combined sessions into groups
+    for sid, comb_list in parallel_map.items():
+        subj    = subjects[sid]
+        n_groups = subj[2]
+        all_students = sorted(subj_students.get(sid, []))
+        size = math.ceil(len(all_students) / n_groups)
+        student_groups = [
+            all_students[i*size:(i+1)*size]
+            for i in range(n_groups)
+        ]
+
+        for sess in comb_list:
+            for grp_idx, studs in enumerate(student_groups, start=1):
+                split = sess.copy()
+                split['students'] = studs
+                split['group']    = grp_idx
+                split.pop('parallel_with', None)
+                out.append(split)
+
+    return out
 
 def create_single_session(sid, teachers_list, hour, students, teachers_dict,
                           maxpd, minpd, hour_blocker, subjects_dict,

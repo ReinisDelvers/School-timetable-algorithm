@@ -1,10 +1,9 @@
 import tkinter as tk
-from tkinter import ttk, END, messagebox
+from tkinter import END, messagebox
 from tkinter.messagebox import showerror
 
 import json
 import pandas as pd
-import math
 import threading
 import logging
 
@@ -1536,62 +1535,45 @@ class MainGUI:
         def on_window_restore(_):
             if wind.state() == 'normal':
                 wind.grab_set()
-
         wind.bind('<Map>', on_window_restore)
         wind.protocol("WM_DELETE_WINDOW", wind.destroy)
 
         main_container = tk.PanedWindow(wind, orient=tk.HORIZONTAL)
         main_container.pack(fill=tk.BOTH, expand=True)
-
-        # Left: timetable
         left_frame = tk.Frame(main_container)
         main_container.add(left_frame)
-
-        # Right: controls
         right_frame = tk.Frame(main_container, width=250)
         main_container.add(right_frame)
         right_frame.pack_propagate(False)
-
         main_container.paneconfig(left_frame, minsize=900)
         main_container.paneconfig(right_frame, minsize=250, width=250)
 
-        # Control panel
         control_panel = tk.LabelFrame(right_frame, text="Controls", font=("Arial", 12, "bold"))
         control_panel.pack(fill=tk.X, padx=5, pady=5)
-
         btn_frame = tk.Frame(control_panel)
         btn_frame.pack(fill=tk.X, padx=5, pady=5)
-
         start_btn = tk.Button(btn_frame, text="Start Algorithm", font=("Arial", 12))
         start_btn.pack(fill=tk.X, padx=5, pady=2)
         view_btn = tk.Button(btn_frame, text="View Saved Schedule", font=("Arial", 12))
         view_btn.pack(fill=tk.X, padx=5, pady=2)
 
-        # ===== Filter controls =====
         filter_frame = tk.LabelFrame(right_frame, text="Filters", font=("Arial", 12, "bold"))
         filter_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
         filter_var = tk.StringVar(value="all")
-        tk.Radiobutton(filter_frame, text="Show All", variable=filter_var,
-                       value="all", font=("Arial", 10)).pack(anchor=tk.W)
-        tk.Radiobutton(filter_frame, text="Show Selected Subject", variable=filter_var,
-                       value="subject", font=("Arial", 10)).pack(anchor=tk.W)
-        tk.Radiobutton(filter_frame, text="Show Selected Teacher", variable=filter_var,
-                       value="teacher", font=("Arial", 10)).pack(anchor=tk.W)
-        tk.Radiobutton(filter_frame, text="Show Selected Student", variable=filter_var,
-                       value="student", font=("Arial", 10)).pack(anchor=tk.W)
-
-        # Single listbox (no tabs/labels)
+        for text, val in [
+            ("Show All", "all"),
+            ("Show Selected Subject", "subject"),
+            ("Show Selected Teacher", "teacher"),
+            ("Show Selected Student", "student")
+        ]:
+            tk.Radiobutton(filter_frame, text=text, variable=filter_var, value=val, font=("Arial", 10)).pack(anchor=tk.W)
         filter_listbox = tk.Listbox(filter_frame, selectmode=tk.SINGLE, font=("Arial", 10), height=8)
         filter_listbox.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
-        # We'll store the three sets of names here
         self.filter_subjects = []
         self.filter_teachers = []
         self.filter_students = []
 
         def repopulate_listbox():
-            """Populate filter_listbox based on filter_var."""
             filter_listbox.delete(0, END)
             mode = filter_var.get()
             if mode == "subject":
@@ -1603,31 +1585,26 @@ class MainGUI:
             elif mode == "student":
                 for name in sorted(self.filter_students):
                     filter_listbox.insert(END, name)
-            else:  # "all" → show subjects by default
+            else:
                 for name in sorted(self.filter_subjects):
                     filter_listbox.insert(END, name)
 
-        # Whenever filter_var changes, repopulate
         filter_var.trace('w', lambda *_: repopulate_listbox())
+        filter_listbox.bind('<<ListboxSelect>>', lambda *_: repopulate_listbox())
 
-        # Validation panel
         validation_frame = tk.LabelFrame(right_frame, text="Validation Results", font=("Arial", 12, "bold"))
         validation_frame.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
-
         validation_text = tk.Text(validation_frame, font=("Courier", 10), height=8)
         validation_scroll = tk.Scrollbar(validation_frame, command=validation_text.yview)
         validation_text.configure(yscrollcommand=validation_scroll.set)
         validation_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         validation_text.pack(fill=tk.BOTH, expand=True)
 
-        # Timetable canvas
         canvas_frame = tk.Frame(left_frame)
         canvas_frame.pack(fill=tk.BOTH, expand=True)
-
         main_canvas = tk.Canvas(canvas_frame)
         main_scrollbar_y = tk.Scrollbar(canvas_frame, orient="vertical", command=main_canvas.yview)
         main_scrollbar_x = tk.Scrollbar(canvas_frame, orient="horizontal", command=main_canvas.xview)
-
         timetable_frame = tk.Frame(main_canvas)
 
         def on_mouse_wheel(event):
@@ -1637,6 +1614,19 @@ class MainGUI:
                 main_canvas.xview_scroll(int(-1*(event.delta/120)), "units")
 
         main_canvas.bind_all("<MouseWheel>", on_mouse_wheel)
+
+        # Logging to capture from algorithm module
+        class TextHandler(logging.Handler):
+            def emit(self, record):
+                msg = self.format(record)
+                # you can insert msg into a Text widget here if desired
+
+        text_handler = TextHandler()
+        text_handler.setFormatter(logging.Formatter('%(levelname)s: %(message)s'))
+        logger = logging.getLogger()
+        # Only add the handler once to prevent duplicates
+        if not any(isinstance(h, TextHandler) for h in logger.handlers):
+            logger.addHandler(text_handler)
 
         def on_configure(_):
             main_canvas.configure(scrollregion=main_canvas.bbox("all"))
