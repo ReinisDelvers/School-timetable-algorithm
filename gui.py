@@ -760,7 +760,7 @@ class MainGUI:
             try:
                 int(group_number)
             except:
-                showerror("Error", "Group number needs to be an integer.")
+                showerror("Error", "Group number needs to be a number.")
                 return
             if selected_subject_teacher_id != None:
                 update_subject_teacher(selected_subject_teacher_id, selected_subject_id, selected_teacher_id, group_number)
@@ -1149,7 +1149,6 @@ class MainGUI:
 
 
 
-
         btn1 = tk.Button(frame, text="Add", font=("Arial", 18), command=subject_student_add)
         btn1.grid(row=0, column=0, sticky=tk.W+tk.E, **options)
 
@@ -1349,17 +1348,17 @@ class MainGUI:
         label11.grid(row=1, column=6, sticky=tk.W+tk.E, **options)
 
         label12 = tk.Label(frame, text="7", font=("Arial", 18))
-        label12.grid(row=1, column=7, sticky=tk.W+tk.E, **options)
+        label12.grid(row=1, column=7, sticky=tk.W+tk.E)
 
         label13 = tk.Label(frame, text="8", font=("Arial", 18))
-        label13.grid(row=1, column=8, sticky=tk.W+tk.E, **options)
+        label13.grid(row=1, column=8, sticky=tk.W+tk.E)
 
         label14 = tk.Label(frame, text="9", font=("Arial", 18))
-        label14.grid(row=1, column=9, sticky=tk.W+tk.E, **options)
+        label14.grid(row=1, column=9, sticky=tk.W+tk.E)
 
         label15 = tk.Label(frame, text="10", font=("Arial", 18))
-        label15.grid(row=1, column=10, sticky=tk.W+tk.E, **options)
-        
+        label15.grid(row=1, column=10, sticky=tk.W+tk.E)
+
         checkboxent1 = tk.IntVar(value=1)
         box1 = tk.Checkbutton(frame, font=("Arial", 18), variable=checkboxent1, offvalue=0, onvalue=1)
         box1.grid(row=2, column=1, sticky=tk.W+tk.E)
@@ -1644,8 +1643,14 @@ class MainGUI:
         def create_session_card(parent, session, scale=1.0):
             frame = tk.Frame(parent, relief="raised", bd=1, bg='#f5f5f5')
 
-            header = tk.Label(frame, text=f"{session['subject_name']} (G{session.get('group', 1)})",
-                              font=("Arial", int(11*scale), "bold"), bg='#e0e0e0')
+            # Format header differently for parallel sessions
+            is_parallel = session.get('is_parallel', False)
+            header_color = '#e0e0ff' if is_parallel else '#e0e0e0'
+            header_text = f"{session['subject_name']} (G{session.get('group', 1)})"
+            if is_parallel:
+                header_text += " [P]"
+                
+            header = tk.Label(frame, text=header_text, font=("Arial", int(11*scale), "bold"), bg=header_color)
             header.pack(fill=tk.X, padx=2, pady=1)
 
             if session.get('teachers'):
@@ -1698,6 +1703,10 @@ class MainGUI:
 
                     if schedule_data and str(d) in schedule_data.get('days', {}):
                         sessions = schedule_data['days'][str(d)].get(str(hr-1), [])
+                        
+                        # Filter out sessions with no students
+                        sessions = [s for s in sessions if s.get('students')]
+                        
                         for session in sessions:
                             show_session = True
                             if filter_type == "subject":
@@ -1864,6 +1873,11 @@ class MainGUI:
             try:
                 with open('schedule_output.json', 'r') as f:
                     schedule_data = json.load(f)
+
+                # Filter out sessions with no students
+                for day in schedule_data.get('days', {}).values():
+                    for period in day.values():
+                        period[:] = [s for s in period if s.get('students')]
 
                 subj_set = set()
                 teach_set = set()

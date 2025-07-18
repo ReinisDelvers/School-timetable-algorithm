@@ -200,10 +200,8 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                     minpd=minpd,
                     hour_blocker=hour_blocker,
                     subjects_dict=subjects,
-                    parallel_group=None
+                    parallel_group=sid
                 )
-                # mark it for later splitting
-                sess['parallel_with'] = sid
                 sessions.append(sess)
             continue
 
@@ -276,41 +274,72 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
 
     return sessions
 
-def split_parallel_sessions(scheduled_sessions, subjects, subj_students):
+def split_parallel_sessions(schedule, subjects, subj_students):
     """
-    After scheduling, expand each combined 'parallel_with' session into its
+    After scheduling, expand each parallel session into its
     subj[2] student-groups—keeping them all in the same timeslot.
     """
-    out = []
-    parallel_map = defaultdict(list)
-
-    # separate combined parallel sessions from everything else
-    for sess in scheduled_sessions:
-        if 'parallel_with' in sess:
-            parallel_map[sess['parallel_with']].append(sess)
-        else:
-            out.append(sess)
-
-    # for each subject, split its combined sessions into groups
-    for sid, comb_list in parallel_map.items():
-        subj    = subjects[sid]
-        n_groups = subj[2]
-        all_students = sorted(subj_students.get(sid, []))
-        size = math.ceil(len(all_students) / n_groups)
-        student_groups = [
-            all_students[i*size:(i+1)*size]
-            for i in range(n_groups)
-        ]
-
-        for sess in comb_list:
-            for grp_idx, studs in enumerate(student_groups, start=1):
-                split = sess.copy()
-                split['students'] = studs
-                split['group']    = grp_idx
-                split.pop('parallel_with', None)
-                out.append(split)
-
-    return out
+    result = {}
+    
+    # Process each timeslot
+    for slot, slot_sessions in schedule.items():
+        result_slot = []
+        
+        # Check each session in the timeslot
+        for sess in slot_sessions:
+            if 'parallel_with' in sess:
+                # This is a parallel session that needs to be split
+                sid = sess['subject']
+                subj = subjects[sid]
+                n_groups = subj[2]
+                all_students = sorted(subj_students.get(sid, []))
+                
+                # Only proceed if we have students to split
+                if not all_students:
+                    # Don't include empty sessions
+                    continue
+                    
+                # Calculate group size and split students
+                size = max(1, math.ceil(len(all_students) / n_groups))
+                student_groups = []
+                for i in range(n_groups):
+                    start_idx = i * size
+                    end_idx = min(start_idx + size, len(all_students))
+                    if start_idx < len(all_students):
+                        student_groups.append(all_students[start_idx:end_idx])
+                
+                # Create split sessions for each group
+                teacher_count = len(sess['teachers'])
+                for grp_idx, students in enumerate(student_groups, start=1):
+                    if not students:
+                        continue
+                        
+                    # Create a copy of the session for this group
+                    split_sess = copy.deepcopy(sess)
+                    split_sess['students'] = students
+                    split_sess['group'] = grp_idx
+                    
+                    # Remove parallel_with marker
+                    if 'parallel_with' in split_sess:
+                        del split_sess['parallel_with']
+                    
+                    # Distribute teachers
+                    if teacher_count >= n_groups:
+                        # One teacher per group if possible
+                        teacher_idx = min(grp_idx - 1, teacher_count - 1)
+                        split_sess['teachers'] = [sess['teachers'][teacher_idx]]
+                    else:
+                        # Assign first teacher if not enough
+                        split_sess['teachers'] = [sess['teachers'][0]] if sess['teachers'] else []
+                    
+                    result_slot.append(split_sess)
+            else:
+                # Regular session, just pass through
+                result_slot.append(sess)
+        
+        result[slot] = result_slot
+    
+    return result
 
 def create_single_session(sid, teachers_list, hour, students, teachers_dict,
                           maxpd, minpd, hour_blocker, subjects_dict,
@@ -324,11 +353,13 @@ def create_single_session(sid, teachers_list, hour, students, teachers_dict,
         'candidates': [],
         'max_per_day': maxpd,
         'min_per_day': minpd,
-        'parallel_with': parallel_group,
-        'is_parallel': (parallel_group is not None),
         'block_size': 1,
         'hour': hour
     }
+    
+    # Add parallel_with marker if this is a parallel session
+    if parallel_group is not None:
+        session['parallel_with'] = parallel_group
 
     for di, day in enumerate(DAYS):
         # must be available that day
@@ -662,7 +693,7 @@ def count_placed_hours_per_group(schedule):
             placed[sid][grp] += sess.get('block_size', 1)
     return placed
 
-# --- Solver with Simulated Annealing & Fallback (unchanged) ---
+# --- Solver with Simulated Annealing & Fallback ---
 def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200, stop_flag=None):
     """
     Greedy initial → fallback for missing → simulated annealing loop.
@@ -730,6 +761,18 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
 
         temp *= cooling_rate
 
+    # Load the subject-student mapping for splitting parallel sessions
+    subj_students = {}
+    for row in get_subject_student():
+        subject_ids = json.loads(row[1])
+        student_id = row[3]
+        for sid in subject_ids:
+            subj_students.setdefault(sid, set()).add(student_id)
+
+    # Now split the parallel sessions in the best schedule
+    logger.info("Splitting parallel subject groups...")
+    best_schedule = split_parallel_sessions(best_schedule, subjects, subj_students)
+    
     # 5) Build students_dict for output
     students_dict = {
         s[0]: {'id': s[0], 'name': f"{s[1]} {s[2] or ''} {s[3]}".strip()}
@@ -1092,9 +1135,7 @@ def reorganize_day(schedule, subjects):
 # --- Output & Validation ---
 def format_schedule_output(schedule, subjects, teachers, students_dict):
     """
-    Dump every session exactly as‐built.  Parallel sessions
-    are no longer “re‐expanded” at formatting time, so you
-    won’t see empty placeholders.
+    Format the schedule for output with proper parallel class identification.
     """
     subject_dict = {
         s[0]: {'id': s[0], 'name': s[1], 'group_count': s[2]}
@@ -1121,8 +1162,15 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
                          .setdefault(per_str, [])
 
         for sess in slot_sessions:
+            # Skip sessions with no students
+            if not sess['students']:
+                continue
+                
             sid = sess['subject']
             subj = subject_dict[sid]
+
+            # Determine if this is from a parallel subject
+            is_parallel = subjects[sid][7] == 1
 
             teachers_out = [
                 {'id': tid, 'name': teacher_dict[tid]['name']}
@@ -1139,9 +1187,8 @@ def format_schedule_output(schedule, subjects, teachers, students_dict):
                 'subject_name': subj['name'],
                 'teachers': teachers_out,
                 'students': students_out,
-                'group': sess.get('group'),
-                'is_parallel': bool(sess.get('is_parallel')),
-                'parallel_group_id': sess.get('parallel_with')
+                'group': sess.get('group', 1),
+                'is_parallel': is_parallel
             }
             formatted['days'][day_str][per_str].append(formatted_session)
 
