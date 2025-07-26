@@ -212,12 +212,49 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
             all_students[i*size:(i+1)*size]
             for i in range(n_groups)
         ]
-        assignments = list(zip(student_groups, flat_teachers))
+        
+        # Check if there are fewer teachers than groups for non-parallel subjects
+        fewer_teachers = len(flat_teachers) < n_groups
+        if fewer_teachers:
+            logger.warning(f"Subject {sid}: {len(flat_teachers)} teachers for {n_groups} groups - distributing carefully")
+            
+        # Distribute teachers to groups, ensuring each teacher knows which groups they teach
+        teacher_groups_map = defaultdict(list)  # {teacher_id: [group_indices]}
+        
+        # Assign teachers to groups evenly
+        for grp_idx, studs in enumerate(student_groups):
+            if not studs:
+                continue
+                
+            if grp_idx < len(flat_teachers):
+                # If we have enough teachers, assign one per group
+                tid = flat_teachers[grp_idx]
+            else:
+                # Otherwise, find the teacher with the least groups assigned
+                tid = min(flat_teachers, key=lambda t: len(teacher_groups_map[t]))
+                
+            # Track which groups this teacher is assigned to
+            teacher_groups_map[tid].append(grp_idx)
 
-        for grp_idx, (studs, tid) in enumerate(assignments, start=1):
-            if not studs or tid is None:
+        # Now create sessions for each group with their assigned teacher
+        for grp_idx, studs in enumerate(student_groups):
+            if not studs:
+                continue
+                
+            # Find which teacher is assigned to this group
+            assigned_teacher = None
+            for tid, groups in teacher_groups_map.items():
+                if grp_idx in groups:
+                    assigned_teacher = tid
+                    break
+                    
+            if not assigned_teacher:
+                logger.error(f"No teacher assigned for group {grp_idx+1} of subject {sid}")
                 continue
 
+            # Add teacher conflict info for scheduler
+            teacher_conflict_groups = teacher_groups_map[assigned_teacher]
+            
             if minpd >= 2:
                 full = hours_per_week // minpd
                 left = hours_per_week - full * minpd
@@ -226,7 +263,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                 for _ in range(full):
                     blk = create_block_session(
                         sid=sid,
-                        teachers_list=[tid],
+                        teachers_list=[assigned_teacher],
                         students=studs,
                         teachers_dict=teachers,
                         block_size=minpd,
@@ -234,14 +271,19 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         subjects_dict=subjects,
                         parallel_group=None
                     )
-                    blk['group'] = grp_idx
+                    blk['group'] = grp_idx + 1
+                    
+                    # Mark which other groups share this teacher to prevent conflicts
+                    if len(teacher_conflict_groups) > 1:
+                        blk['teacher_shared_with'] = teacher_conflict_groups
+                        
                     sessions.append(blk)
 
                 # leftover single-hour sessions
                 for i in range(left):
                     single = create_single_session(
                         sid=sid,
-                        teachers_list=[tid],
+                        teachers_list=[assigned_teacher],
                         hour=i,
                         students=studs,
                         teachers_dict=teachers,
@@ -251,7 +293,12 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         subjects_dict=subjects,
                         parallel_group=None
                     )
-                    single['group'] = grp_idx
+                    single['group'] = grp_idx + 1
+                    
+                    # Mark which other groups share this teacher to prevent conflicts
+                    if len(teacher_conflict_groups) > 1:
+                        single['teacher_shared_with'] = teacher_conflict_groups
+                        
                     sessions.append(single)
 
             else:
@@ -259,7 +306,7 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                 for h in range(hours_per_week):
                     sess = create_single_session(
                         sid=sid,
-                        teachers_list=[tid],
+                        teachers_list=[assigned_teacher],
                         hour=h,
                         students=studs,
                         teachers_dict=teachers,
@@ -269,7 +316,12 @@ def build_sessions(teachers, subjects, subject_teachers, subj_students, hour_blo
                         subjects_dict=subjects,
                         parallel_group=None
                     )
-                    sess['group'] = grp_idx
+                    sess['group'] = grp_idx + 1
+                    
+                    # Mark which other groups share this teacher to prevent conflicts
+                    if len(teacher_conflict_groups) > 1:
+                        sess['teacher_shared_with'] = teacher_conflict_groups
+                        
                     sessions.append(sess)
 
     return sessions
@@ -278,6 +330,8 @@ def split_parallel_sessions(schedule, subjects, subj_students):
     """
     After scheduling, expand each parallel session into its
     subj[2] student-groups—keeping them all in the same timeslot.
+    When teacher count < group count, ensure proper teacher distribution
+    and track which groups can't be scheduled in the same hour.
     """
     result = {}
     
@@ -285,59 +339,87 @@ def split_parallel_sessions(schedule, subjects, subj_students):
     for slot, slot_sessions in schedule.items():
         result_slot = []
         
-        # Check each session in the timeslot
+        # Track which teachers are already assigned in this slot
+        teachers_in_slot = set()
+        
+        # First add all non-parallel sessions to the result and track their teachers
         for sess in slot_sessions:
-            if 'parallel_with' in sess:
-                # This is a parallel session that needs to be split
-                sid = sess['subject']
-                subj = subjects[sid]
-                n_groups = subj[2]
-                all_students = sorted(subj_students.get(sid, []))
+            if 'parallel_with' not in sess:
+                result_slot.append(sess)
+                for tid in sess['teachers']:
+                    teachers_in_slot.add(tid)
+        
+        # Now process parallel sessions
+        parallel_sessions = [sess for sess in slot_sessions if 'parallel_with' in sess]
+        
+        # Sort by subject to ensure consistent processing
+        parallel_sessions.sort(key=lambda s: s['subject'])
+        
+        for sess in parallel_sessions:
+            sid = sess['subject']
+            subj = subjects[sid]
+            n_groups = subj[2]
+            all_students = sorted(subj_students.get(sid, []))
+            
+            # Skip if no students
+            if not all_students:
+                continue
                 
-                # Only proceed if we have students to split
-                if not all_students:
-                    # Don't include empty sessions
+            # Calculate group size and split students
+            size = max(1, math.ceil(len(all_students) / n_groups))
+            student_groups = []
+            for i in range(n_groups):
+                start_idx = i * size
+                end_idx = min(start_idx + size, len(all_students))
+                if start_idx < len(all_students):
+                    student_groups.append(all_students[start_idx:end_idx])
+            
+            # Create a pool of available teachers for this subject
+            available_teachers = [t for t in sess['teachers'] if t not in teachers_in_slot]
+            
+            # If we have more groups than available teachers, we need to reschedule
+            if len(student_groups) > (len(available_teachers) + len(sess['teachers']) - len(available_teachers)):
+                logger.warning(f"Not enough teachers for all groups in subject {sid} at {slot}. Some groups will need rescheduling.")
+            
+            # Create split sessions for each group
+            for grp_idx, students in enumerate(student_groups, start=1):
+                if not students:
                     continue
                     
-                # Calculate group size and split students
-                size = max(1, math.ceil(len(all_students) / n_groups))
-                student_groups = []
-                for i in range(n_groups):
-                    start_idx = i * size
-                    end_idx = min(start_idx + size, len(all_students))
-                    if start_idx < len(all_students):
-                        student_groups.append(all_students[start_idx:end_idx])
+                # Create a copy of the session for this group
+                split_sess = copy.deepcopy(sess)
+                split_sess['students'] = students
+                split_sess['group'] = grp_idx
                 
-                # Create split sessions for each group
-                teacher_count = len(sess['teachers'])
-                for grp_idx, students in enumerate(student_groups, start=1):
-                    if not students:
-                        continue
-                        
-                    # Create a copy of the session for this group
-                    split_sess = copy.deepcopy(sess)
-                    split_sess['students'] = students
-                    split_sess['group'] = grp_idx
-                    
-                    # Remove parallel_with marker
-                    if 'parallel_with' in split_sess:
-                        del split_sess['parallel_with']
-                    
-                    # Distribute teachers
-                    if teacher_count >= n_groups:
-                        # One teacher per group if possible
-                        teacher_idx = min(grp_idx - 1, teacher_count - 1)
-                        split_sess['teachers'] = [sess['teachers'][teacher_idx]]
-                    else:
-                        # Assign first teacher if not enough
-                        split_sess['teachers'] = [sess['teachers'][0]] if sess['teachers'] else []
-                    
-                    result_slot.append(split_sess)
-            else:
-                # Regular session, just pass through
-                result_slot.append(sess)
+                # Remove parallel_with marker
+                if 'parallel_with' in split_sess:
+                    del split_sess['parallel_with']
+                
+                # Assign a teacher if available
+                if available_teachers:
+                    assigned_tid = available_teachers.pop(0)
+                    split_sess['teachers'] = [assigned_tid]
+                    teachers_in_slot.add(assigned_tid)
+                else:
+                    # We need to force this group to be scheduled in a different timeslot
+                    # by creating an impossible conflict
+                    if sess['teachers']:
+                        assigned_tid = random.choice(sess['teachers'])
+                        split_sess['teachers'] = [assigned_tid]
+                        # We do NOT add to teachers_in_slot to ensure this conflict is detected
+                
+                result_slot.append(split_sess)
         
         result[slot] = result_slot
+    
+    # Final validation: ensure no teacher conflicts
+    for slot, sessions in result.items():
+        teachers_used = {}
+        for sess in sessions:
+            for tid in sess['teachers']:
+                if tid in teachers_used:
+                    logger.error(f"Teacher {tid} assigned to multiple sessions at {slot}")
+                teachers_used[tid] = sess['id']
     
     return result
 
@@ -443,6 +525,18 @@ def evaluate_schedule(schedule, all_sessions, subjects):
     """
     IDLE_PENALTY = 5000
 
+    # CRITICAL CHECK: Detect teachers assigned to multiple sessions at the same time
+    teacher_timeslots = {}  # (teacher_id, day, period) -> session_id
+    
+    for (day, period), sessions_here in schedule.items():
+        for sess in sessions_here:
+            for tid in sess['teachers']:
+                key = (tid, day, period)
+                if key in teacher_timeslots:
+                    # Teacher already has a session at this time - IMMEDIATE REJECTION
+                    return float('inf')
+                teacher_timeslots[key] = sess['id']
+
     score = 0
     teacher_conflicts = 0
     student_conflicts = 0
@@ -537,8 +631,6 @@ def evaluate_schedule(schedule, all_sessions, subjects):
 
     return score
 
-
-
 # --- Evaluation Function (penalizes idle gaps) ---
 def greedy_initial(sessions, subjects):
     """
@@ -575,13 +667,27 @@ def greedy_initial(sessions, subjects):
                     return True
         return False
 
-    def has_teacher_conflict(sess, day, start_period):
+    def has_teacher_conflict(sess, day, period, schedule):
+        """
+        Check if placing session 'sess' at (day, period) would create 
+        a teacher conflict with any existing sessions.
+        Returns True if there would be a conflict (teacher has 2+ groups).
+        """
         bs = sess.get('block_size', 1)
+        
         for offset in range(bs):
-            idx = day * PERIODS_PER_DAY + (start_period + offset)
-            for tid in sess['teachers']:
-                if idx in teacher_schedule[tid]:
-                    return True
+            target_slot = (day, period + offset)
+            if target_slot in schedule:
+                for existing_sess in schedule[target_slot]:
+                    # Skip comparing with self (for swap operations)
+                    if existing_sess.get('id') == sess.get('id'):
+                        continue
+                    
+                    # Check for any common teachers - that would be a conflict
+                    for tid in sess['teachers']:
+                        if tid in existing_sess['teachers']:
+                            return True
+                            
         return False
 
     def slot_score(sess, sl):
@@ -633,7 +739,7 @@ def greedy_initial(sessions, subjects):
                 continue
             if daily.get(d, 0) + bs > maxpd:
                 continue
-            if has_teacher_conflict(sess, d, p0):
+            if has_teacher_conflict(sess, d, p0, schedule):  # Pass schedule here
                 continue
             if has_student_conflict(sess, d, p0):
                 continue
@@ -730,10 +836,24 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
     min_temp = 0.001
     iteration = 0
     stall_count = 0
+    last_log_time = start_time
+    max_iterations = 100000  # Add a hard iteration limit
 
-    while temp > min_temp and (time.time() - start_time < time_limit):
+    while temp > min_temp and (time.time() - start_time < time_limit) and iteration < max_iterations:
         if stop_flag and stop_flag():
             break
+            
+        # Safety timeout check - log progress and check if we're making progress
+        current_time = time.time()
+        if current_time - last_log_time > 30:  # Log every 30 seconds
+            logger.info(f"Still running... Iter {iteration}, best_score={best_score}, temp={temp:.4f}")
+            last_log_time = current_time
+            
+        # Hard timeout safety
+        if current_time - start_time > time_limit * 0.95:
+            logger.warning("Time limit nearly reached, finishing up...")
+            break
+            
         iteration += 1
 
         neighbor = generate_neighbor(current, subjects)
@@ -756,7 +876,6 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
             logger.info(f"Iter {iteration}, best_score={best_score}, temp={temp:.4f}, stall_count={stall_count}")
         if stall_count >= STALL_THRESHOLD:
             logger.error("No improvement for too long, stopping.")
-            validate_final_schedule(best_schedule, sessions, subjects, teachers)
             break
 
         temp *= cooling_rate
@@ -780,6 +899,28 @@ def solve_timetable(sessions, subjects, teachers, hour_blocker, time_limit=1200,
     }
     return best_schedule, students_dict
 
+def has_teacher_conflict(sess, day, period, schedule):
+    """
+    Check if placing session 'sess' at (day, period) would create 
+    a teacher conflict with any existing sessions.
+    Returns True if there would be a conflict (teacher has 2+ groups).
+    """
+    bs = sess.get('block_size', 1)
+    
+    for offset in range(bs):
+        target_slot = (day, period + offset)
+        if target_slot in schedule:
+            for existing_sess in schedule[target_slot]:
+                # Skip comparing with self (for swap operations)
+                if existing_sess.get('id') == sess.get('id'):
+                    continue
+                
+                # Check for any common teachers - that would be a conflict
+                for tid in sess['teachers']:
+                    if tid in existing_sess['teachers']:
+                        return True
+                        
+    return False
 
 def count_placed_hours(schedule):
     placed = defaultdict(int)
@@ -843,14 +984,45 @@ def fallback_replace_blocks_with_all_singles(all_sessions, placed_schedule, subj
 
 
 def generate_neighbor(schedule, subjects):
+    """
+    Generate a neighbor state from the current schedule.
+    Ensures that teachers are never assigned to multiple groups at the same time.
+    """
     moves = [
         move_session_to_empty_slot,
         swap_two_sessions,
         move_parallel_group,
         reorganize_day
     ]
-    move = random.choice(moves)
-    return move(copy.deepcopy(schedule), subjects)
+    
+    # Try up to 10 times to generate a valid neighbor
+    for _ in range(10):
+        move = random.choice(moves)
+        neighbor = copy.deepcopy(schedule)
+        neighbor = move(neighbor, subjects)
+        
+        # Validate: check that no teacher has multiple groups at the same time
+        teacher_timeslots = {}  # (tid, day, period) -> session_id
+        has_conflicts = False
+        
+        for (day, period), sessions_here in neighbor.items():
+            for sess in sessions_here:
+                for tid in sess['teachers']:
+                    key = (tid, day, period)
+                    if key in teacher_timeslots:
+                        has_conflicts = True
+                        break
+                    teacher_timeslots[key] = sess['id']
+                if has_conflicts:
+                    break
+            if has_conflicts:
+                break
+                
+        if not has_conflicts:
+            return neighbor
+    
+    # If all attempts failed, return a copy of the original schedule
+    return copy.deepcopy(schedule)
 
 def _compute_subject_daily(schedule, sid):
     counts = defaultdict(int)
@@ -874,7 +1046,9 @@ def move_session_to_empty_slot(schedule, subjects):
     occupied = list(schedule.keys())
     if not occupied:
         return schedule
+    
     teacher_sched = defaultdict(set)
+    
     for (d,p), sl in schedule.items():
         idx = d*PERIODS_PER_DAY + p
         for sess in sl:
@@ -924,24 +1098,25 @@ def move_session_to_empty_slot(schedule, subjects):
         newd[oldd]-=bs; newd[nd]+=bs
         if newd[nd]>maxpd: continue
 
-        conflict=False
-        for off in range(bs):
-            idx=nd*PERIODS_PER_DAY+(np+off)
-            for tid in session['teachers']:
-                if idx in teacher_sched[tid]:
-                    conflict=True; break
-            if conflict: break
-        if conflict: continue
+        # Use our new teacher conflict check function
+        if has_teacher_conflict(session, nd, np, schedule):
+            continue
 
+        # Student conflict check
+        conflict = False
         for off in range(bs):
             if has_student_conflict(session,(nd,np+off),schedule):
-                conflict=True; break
-        if conflict: continue
+                conflict=True
+                break
+        if conflict:
+            continue
 
+        # Execute the move
         old_slots=[k for k,v in schedule.items() if session in v]
         for os in old_slots:
             schedule[os].remove(session)
-            if not schedule[os]: del schedule[os]
+            if not schedule[os]:
+                del schedule[os]
         for off in range(bs):
             slot=(nd,np+off)
             schedule.setdefault(slot,[]).append(session)
@@ -952,13 +1127,7 @@ def move_session_to_empty_slot(schedule, subjects):
 def swap_two_sessions(schedule, subjects):
     occupied=list(schedule.keys())
     if len(occupied)<2: return schedule
-    teacher_sched=defaultdict(set)
-    for (d,p),sl in schedule.items():
-        idx=d*PERIODS_PER_DAY+p
-        for sess in sl:
-            for tid in sess['teachers']:
-                teacher_sched[tid].add(idx)
-
+    
     s1,s2=random.sample(occupied,2)
     if not schedule[s1] or not schedule[s2]: return schedule
 
@@ -969,30 +1138,47 @@ def swap_two_sessions(schedule, subjects):
     bs1,bs2=sess1.get('block_size',1),sess2.get('block_size',1)
     d1,p1=s1; d2,p2=s2
 
-    daily1,_daily2 = _compute_subject_daily(schedule,sid1),_compute_subject_daily(schedule,sid2)
-    nd1=daily1.copy(); nd2=_daily2.copy()
+    daily1,daily2 = _compute_subject_daily(schedule,sid1),_compute_subject_daily(schedule,sid2)
+    nd1=daily1.copy(); nd2=daily2.copy()
     nd1[d1]-=bs1; nd1[d2]+=bs1
     nd2[d2]-=bs2; nd2[d1]+=bs2
     if nd1[d2]>maxpd1 or nd2[d1]>maxpd2: return schedule
 
-    # teacher conflict
-    for off in range(bs1):
-        idx2=d2*PERIODS_PER_DAY+(p2+off)
-        for tid in sess1['teachers']:
-            if idx2 in teacher_sched[tid] and (d2,p2+off)!=s1:
-                return schedule
-    for off in range(bs2):
-        idx1=d1*PERIODS_PER_DAY+(p1+off)
-        for tid in sess2['teachers']:
-            if idx1 in teacher_sched[tid] and (d1,p1+off)!=s2:
-                return schedule
+    # Create temporary schedules for conflict checking
+    test_schedule1 = copy.deepcopy(schedule)
+    test_schedule2 = copy.deepcopy(schedule)
+    
+    # Remove sess1 from its slots in test_schedule1
+    for slot in [s1]:
+        for off in range(bs1):
+            test_slot = (slot[0], slot[1] + off)
+            if test_slot in test_schedule1:
+                if sess1 in test_schedule1[test_slot]:
+                    test_schedule1[test_slot].remove(sess1)
+                    
+    # Remove sess2 from its slots in test_schedule2
+    for slot in [s2]:
+        for off in range(bs2):
+            test_slot = (slot[0], slot[1] + off)
+            if test_slot in test_schedule2:
+                if sess2 in test_schedule2[test_slot]:
+                    test_schedule2[test_slot].remove(sess2)
+    
+    # Check if sess1 can go to sess2's position without teacher conflicts
+    if has_teacher_conflict(sess1, d2, p2, test_schedule1):
+        return schedule
+        
+    # Check if sess2 can go to sess1's position without teacher conflicts
+    if has_teacher_conflict(sess2, d1, p1, test_schedule2):
+        return schedule
 
-    # student conflict
+    # Student conflict checks remain the same
     for off in range(bs1):
         if has_student_conflict(sess1,(d2,p2+off),schedule): return schedule
     for off in range(bs2):
         if has_student_conflict(sess2,(d1,p1+off),schedule): return schedule
 
+    # Execute swap
     old1=[k for k,v in schedule.items() if sess1 in v]
     old2=[k for k,v in schedule.items() if sess2 in v]
     for o in old1:
@@ -1210,23 +1396,43 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
         'teacher_conflict_details': []
     }
 
-    for sid in subjects:
-        stats['required_hours'][sid] = subjects[sid][3]
-
+    # For each subject, set the required hours properly accounting for parallel subjects
+    for sid, subj in subjects.items():
+        hours_per_week = subj[3]
+        if subj[7] == 1:  # If it's a parallel subject
+            group_count = subj[2]
+            stats['required_hours'][sid] = hours_per_week * group_count
+        else:
+            stats['required_hours'][sid] = hours_per_week
+    
+    # Track unique (day, period, subject) combinations to count actual hours correctly
+    subject_slots = defaultdict(set)
+    
+    # Process all sessions to find student/teacher conflicts
     for (day, period), slot_sessions in schedule.items():
         teachers_this_slot = defaultdict(list)
         students_this_slot = defaultdict(list)
+        
+        # First pass: collect all data for this slot
         for sess in slot_sessions:
             sid = sess['subject']
-            stats['subject_hours'][sid] += 1
+            
+            # Add this timeslot to the subject's set
+            subject_slots[sid].add((day, period))
+            
+            # Daily tracking for the UI display
             stats['subject_daily'][sid][day] += 1
+            
+            # Track teachers and students for conflict detection
             for tid in sess['teachers']:
                 teachers_this_slot[tid].append(sess['id'])
                 stats['teacher_daily_load'][tid][day] += 1
+                
             for stu in sess['students']:
                 students_this_slot[stu].append(sess['id'])
                 stats['student_daily_load'][stu][day] += 1
 
+        # Check for conflicts
         for tid, sess_ids in teachers_this_slot.items():
             if len(sess_ids) > 1:
                 stats['teacher_conflicts'] += 1
@@ -1238,6 +1444,26 @@ def validate_final_schedule(schedule, sessions, subjects, teachers):
                 stats['student_conflicts'] += 1
                 stats['student_conflict_details'].append((stu, day, period, sess_ids))
                 logger.error(f"Student conflict: Student {stu} has sessions {sess_ids} on {DAYS[day]} period {period}")
+    
+    # Count hours correctly by examining each subject's slots and sessions
+    for sid, subj in subjects.items():
+        is_parallel = subj[7] == 1
+        group_count = subj[2] if is_parallel else 1
+        
+        if is_parallel:
+            # For parallel subjects, count how many groups were actually created
+            # by counting unique group numbers within each time slot
+            for (day, period) in subject_slots[sid]:
+                groups_in_slot = set()
+                for sess in schedule.get((day, period), []):
+                    if sess['subject'] == sid:
+                        groups_in_slot.add(sess.get('group', 1))
+                
+                # Count once per actual group present
+                stats['subject_hours'][sid] += len(groups_in_slot)
+        else:
+            # For regular subjects, just count the number of slots where it appears
+            stats['subject_hours'][sid] = len(subject_slots[sid])
 
     logger.info("\n--- Subject‐by‐Subject Hours Check ---")
     missing = []
